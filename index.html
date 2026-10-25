@@ -1978,6 +1978,7 @@ body.marqueeing { user-select: none; -webkit-user-select: none; }
 .selbar button.danger.armed { background: var(--danger); color: #fff; }
 .selbar .x { width: 34px; padding: 0; font-size: 18px; color: var(--muted); }
 .selbar .sep { width: 1px; height: 20px; background: var(--line-2); margin: 0 4px; }
+@media (hover: none) { .seltag { top: calc(12px + env(safe-area-inset-top, 0px)); bottom: auto !important; } } /* a phone's keyboard covers the bottom */
 .seltag { position: fixed; z-index: 81; left: 50%; transform: translateX(-50%); bottom: calc(80px + env(safe-area-inset-bottom, 0px)); width: min(420px, calc(100vw - 24px)); padding: 12px; border-radius: 14px; background: var(--raised); border: 1px solid var(--line-2); box-shadow: var(--shadow); display: grid; gap: 10px; }
 .seltag[hidden] { display: none; }
 .seltag input { height: 38px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--line-2); background: var(--surface); color: var(--text); font: inherit; outline: none; }
@@ -2365,7 +2366,7 @@ input, textarea, select, .field { transition: border-color .18s ease, box-shadow
         <div class="seg typeslot" id="typeslot" hidden></div>
         <button class="tool" id="export-btn" type="button" data-menu="export" data-tip="Export as moodboard" aria-label="Export as moodboard" aria-haspopup="menu" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M5 20h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
         <button class="tool" id="shuffle-btn" type="button" data-tip="Shuffle" aria-label="Shuffle the order" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h3c4 0 6 10 10 10h5M18 14l3 3-3 3M3 17h3c1.5 0 2.7-1.4 3.7-3M14 7.3c.6-.2 1.3-.3 2-.3h5M18 4l3 3-3 3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
-        <button class="tool" id="bg-btn" type="button" data-tip="Background colour · B" aria-label="Background colour" aria-haspopup="dialog" aria-expanded="false"><i class="bgdot"></i></button>
+        <button class="tool" id="bg-btn" type="button" data-tip="Background colour" aria-label="Background colour" aria-haspopup="dialog" aria-expanded="false"><i class="bgdot"></i></button>
         <button class="tool" id="settings-btn" type="button" data-tip="Settings" aria-label="Settings"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.6"/><path opacity=".55" d="M13.7654 2.15224C13.3978 2 12.9319 2 12 2C11.0681 2 10.6022 2 10.2346 2.15224C9.74457 2.35523 9.35522 2.74458 9.15223 3.23463C9.05957 3.45834 9.0233 3.7185 9.00911 4.09799C8.98826 4.65568 8.70226 5.17189 8.21894 5.45093C7.73564 5.72996 7.14559 5.71954 6.65219 5.45876C6.31645 5.2813 6.07301 5.18262 5.83294 5.15102C5.30704 5.08178 4.77518 5.22429 4.35436 5.5472C4.03874 5.78938 3.80577 6.1929 3.33983 6.99993C2.87389 7.80697 2.64092 8.21048 2.58899 8.60491C2.51976 9.1308 2.66227 9.66266 2.98518 10.0835C3.13256 10.2756 3.3397 10.437 3.66119 10.639C4.1338 10.936 4.43789 11.4419 4.43786 12C4.43783 12.5581 4.13375 13.0639 3.66118 13.3608C3.33965 13.5629 3.13248 13.7244 2.98508 13.9165C2.66217 14.3373 2.51966 14.8691 2.5889 15.395C2.64082 15.7894 2.87379 16.193 3.33973 17C3.80568 17.807 4.03865 18.2106 4.35426 18.4527C4.77508 18.7756 5.30694 18.9181 5.83284 18.8489C6.07289 18.8173 6.31632 18.7186 6.65204 18.5412C7.14547 18.2804 7.73556 18.27 8.2189 18.549C8.70224 18.8281 8.98826 19.3443 9.00911 19.9021C9.02331 20.2815 9.05957 20.5417 9.15223 20.7654C9.35522 21.2554 9.74457 21.6448 10.2346 21.8478C10.6022 22 11.0681 22 12 22C12.9319 22 13.3978 22 13.7654 21.8478C14.2554 21.6448 14.6448 21.2554 14.8477 20.7654C14.9404 20.5417 14.9767 20.2815 14.9909 19.902C15.0117 19.3443 15.2977 18.8281 15.781 18.549C16.2643 18.2699 16.8544 18.2804 17.3479 18.5412C17.6836 18.7186 17.927 18.8172 18.167 18.8488C18.6929 18.9181 19.2248 18.7756 19.6456 18.4527C19.9612 18.2105 20.1942 17.807 20.6601 16.9999C21.1261 16.1929 21.3591 15.7894 21.411 15.395C21.4802 14.8691 21.3377 14.3372 21.0148 13.9164C20.8674 13.7243 20.6602 13.5628 20.3387 13.3608C19.8662 13.0639 19.5621 12.558 19.5621 11.9999C19.5621 11.4418 19.8662 10.9361 20.3387 10.6392C20.6603 10.4371 20.8675 10.2757 21.0149 10.0835C21.3378 9.66273 21.4803 9.13087 21.4111 8.60497C21.3592 8.21055 21.1262 7.80703 20.6602 7C20.1943 6.19297 19.9613 5.78945 19.6457 5.54727C19.2249 5.22436 18.693 5.08185 18.1671 5.15109C17.9271 5.18269 17.6837 5.28136 17.3479 5.4588C16.8545 5.71959 16.2644 5.73002 15.7811 5.45096C15.2977 5.17191 15.0117 4.65566 14.9909 4.09794C14.9767 3.71848 14.9404 3.45833 14.8477 3.23463C14.6448 2.74458 14.2554 2.35523 13.7654 2.15224Z" stroke="currentColor" stroke-width="1.6"/></svg></button>
       </div>
     </div>
@@ -4826,7 +4827,7 @@ function inOrder(db) {
     webPreviewsSoon()
     if (known) setTimeout(() => newSaves(S.refs.filter(r => !known.has(r.id)), known.size), 0)
     // what arrives while you're looking joins at the bottom, one after another, so nothing on screen moves (Rohit: no abrupt shifts)
-    if (known) { S.arrived ||= []; for (const r of S.refs) if (!known.has(r.id) && !S.arrived.includes(r.id)) S.arrived.push(r.id) }
+    if (known) { S.arrived ||= []; for (const r of S.refs) if (!known.has(r.id) && !S.arrived.includes(r.id) && !(S.restored && S.restored.has(r.id))) S.arrived.push(r.id) }
     syncVocab()
     const first = !S.loaded
     S.loaded = true
@@ -6060,14 +6061,19 @@ addEventListener('scroll', () => { if (menuFor) closeMenu() }, { passive: true }
 // popups anchored to a button (background colour, type/order menus, project and hashtag menus) close once the page really
 // scrolls, instead of floating over the grid; a few px (a phone's address bar showing or hiding) don't count
 let popScrollY = scrollY
-addEventListener('scroll', () => {
-  if (Math.abs(scrollY - popScrollY) < 8) return
-  popScrollY = scrollY
+const closeAnchored = () => {
   if (!$('#bgpop').hidden) toggleBgPop(false)
-  for (const sel of ['#tagmenu', '#seltag', '#th-menu', '#projmenu']) { const el = $(sel); if (el && !el.hidden) el.hidden = true }
+  if (!$('#projmenu').hidden) closeProjMenu()
+  for (const sel of ['#tagmenu', '#seltag', '#th-menu']) { const el = $(sel); if (el && !el.hidden) el.hidden = true }
   document.querySelectorAll('.fdrop[aria-expanded="true"], [data-menu][aria-expanded="true"]').forEach(b => b.setAttribute('aria-expanded', 'false'))
-}, { passive: true })
-addEventListener('resize', () => { if (menuFor) closeMenu() })
+}
+document.addEventListener('scroll', e => {
+  if (e.target === document) { if (Math.abs(scrollY - popScrollY) < 8) return; popScrollY = scrollY }
+  else if (e.target.closest && e.target.closest('#bgpop, #tagmenu, #seltag, #th-menu, #projmenu, #quick')) return // scrolling inside the popup itself
+  closeAnchored()
+}, { capture: true, passive: true })
+
+addEventListener('resize', () => { if (menuFor) closeMenu(); closeAnchored() }) // a popup placed next to a button is wrong after a resize or rotation
 
 // Every delete asks first, in a small window: Cancel or Delete (Esc cancels, Enter deletes)
 function askConfirm({ title, body = '', yes = 'Delete' }) {
@@ -6126,7 +6132,7 @@ function deleteRef(r) {
   S.db.collection('refs').doc(id).delete().then(() => {
     rememberRemoved([r])
     const purge = setTimeout(() => { if (data.image && S.assets) S.assets.delete(data.image).catch(() => {}) }, 7000)
-    toast('Deleted', { label: 'Undo', run: () => { clearTimeout(purge); rememberRemoved([r], false); S.db.collection('refs').doc(id).set(data).then(() => toast('Restored')).catch(e => toast('Couldn’t restore: ' + e.message)) } })
+    toast('Deleted', { label: 'Undo', run: () => { clearTimeout(purge); rememberRemoved([r], false); (S.restored ||= new Set()).add(id); S.db.collection('refs').doc(id).set(data).then(() => toast('Restored')).catch(e => toast('Couldn’t restore: ' + e.message)) } })
   }).catch(e => toast('Couldn’t delete: ' + e.message))
 }
 
@@ -6415,6 +6421,7 @@ $('#d-delete').onclick = async () => {
 // On the website without the extension, references that are still waiting for a picture (saved from a phone, or before the
 // extension was installed) get their title and picture from the server function, a few at a time, in the background
 const WEBPREV = { asked: new Set(), busy: false, timer: 0 }
+const webPrev = () => !!(window.DAILIES_WEB && window.DAILIES_WEB_API && window.DAILIES_WEB_API.previewUrl) // the website fetches pictures itself
 function webPreviewsSoon() { if (!(window.DAILIES_WEB && S.canWrite)) return; clearTimeout(WEBPREV.timer); WEBPREV.timer = setTimeout(webPreviews, 3000) }
 async function webPreviews() {
   const W = window.DAILIES_WEB_API
@@ -6539,7 +6546,7 @@ function updateAddPreview() {
   const src = sourceOf(link), yt = src === 'youtube' ? youtubeId(link) : null, kind = KIND[kindOf(link, src)] || 'Link'
   const igc = src === 'instagram' && instagramCode(link) ? `https://www.instagram.com/p/${instagramCode(link)}/media/?size=l` : ''
   const what = src === 'web' ? hostOf(link) : `${info(src).label} ${kind.toLowerCase()}`
-  const later = S.ext && !isTouch() ? 'Picture and title arrive a few seconds after you save.' : 'Its picture arrives when Dailies is open on your computer.'
+  const later = webPrev() || (S.ext && !isTouch()) ? 'Picture and title arrive a few seconds after you save.' : 'Its picture arrives when Dailies is open on your computer.'
   box.innerHTML = `<span class="ap-thumb">${glyph(src, true)}${yt ? `<img alt="" src="https://i.ytimg.com/vi/${esc(yt)}/mqdefault.jpg" onerror="this.remove()">` : igc ? `<img alt="" referrerpolicy="no-referrer" src="${esc(igc)}" onerror="this.remove()">` : ''}</span><span class="ap-tx"><b>${esc(what)}</b><span>${esc(hostOf(link))}</span><small>${yt ? 'Picture and title arrive after you save.' : later}</small></span>`
   box.hidden = false
   box.style.animation = 'none'; void box.offsetWidth; box.style.animation = ''
@@ -6635,7 +6642,7 @@ $('#add-form').addEventListener('submit', async e => {
     lsSet('dailies:quickproj', into || '')
     if (into && done.id) { addToProject(into, [done.id]); if (projectsOn()) renderProjects() }
     closeTop()
-    if (!done.dup && url && !pending && !(prev && prev.blob) && isTouch() && S.assets) toast('Saved. Its picture arrives when Dailies is open on your computer.', { label: 'Add picture', run: () => pickPictureFor(done.id) })
+    if (!done.dup && url && !pending && !(prev && prev.blob) && isTouch() && S.assets && !webPrev()) toast('Saved. Its picture arrives when Dailies is open on your computer.', { label: 'Add picture', run: () => pickPictureFor(done.id) })
     else toast(done.dup ? 'Already in your library. Note added.' : 'Saved', { label: 'View', run: () => openDetail(done.id) })
   } catch (err) {
     toast(err && err.code && /upload|unsupported|too_large|quota/.test(err.code) ? uploadError(err) : 'Couldn’t save: ' + (err.message || err.code))
@@ -6750,7 +6757,7 @@ $('#quick').addEventListener('submit', async e => {
     if (into && done.id) { addToProject(into, [done.id]); if (projectsOn()) renderProjects() }
     toggleQuick(null, false)
     // a phone has no extension to fetch the picture: say so, and let the picture come from Photos right now
-    if (!done.dup && isTouch() && S.assets) toast('Saved. Its picture arrives when Dailies is open on your computer.', { label: 'Add picture', run: () => pickPictureFor(done.id) })
+    if (!done.dup && isTouch() && S.assets && !webPrev()) toast('Saved. Its picture arrives when Dailies is open on your computer.', { label: 'Add picture', run: () => pickPictureFor(done.id) })
     else toast(done.dup ? 'Already in your library. Note added.' : 'Saved', { label: 'View', run: () => openDetail(done.id) })
   } catch (err) {
     toast('Couldn’t save: ' + (err.message || err.code))
@@ -7405,7 +7412,7 @@ function renderSettings() {
       const h = e.target.closest('.ss-h, [data-slib]'); if (!h) return
       if (h.dataset.slib !== undefined) { // an action button, not a section
         const k = h.dataset.slib; closeTop()
-        setTimeout(() => { if (k === 'import') openImport(false); else if (k === 'bg') toggleBgPop(true); else if (k === 'export') { const b = $('#settings-btn'); b.dataset.menu = 'export'; openFilterMenu(b); delete b.dataset.menu } }, 280)
+        setTimeout(() => { if (k === 'import') openImport(false); else if (k === 'bg') toggleBgPop(true); else if (k === 'export') { const b = $('#settings-btn'); b.dataset.menu = 'export'; openFilterMenu(b) } }, 280)
         return
       }
       const el = h.closest('.ss'), k = el.dataset.ss
@@ -8584,6 +8591,7 @@ world.insertBefore(linksSvg, world.firstChild)
 let curView = null
 function closeTransient() {
   if (CV.editing) finishEdit()
+  if (document.body.classList.contains('web-mode')) closeWeb()
   closeMenu(); closeQuick(); closeCvMenu(); closeCmdk(); closeMention(); fontMenu(false)
   if (!$('#bgpop').hidden) toggleBgPop(false)
   if (!$('#quick').hidden) toggleQuick(null, false)
@@ -9711,6 +9719,18 @@ function commitMove(d, it) {
   applyGeom(); schedulePersist()
 }
 vp.addEventListener('pointerup', endPointer)
+let lastTap = null // Android Chrome never synthesises dblclick from taps, so two quick taps are turned into one here
+vp.addEventListener('pointerup', e => {
+  if (e.pointerType !== 'touch') return
+  const now = performance.now()
+  if (lastTap && now - lastTap.t < 350 && Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) < 24) {
+    lastTap = null
+    const at = document.elementFromPoint(e.clientX, e.clientY) || vp
+    at.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, clientX: e.clientX, clientY: e.clientY }))
+    return
+  }
+  lastTap = { t: now, x: e.clientX, y: e.clientY }
+})
 vp.addEventListener('pointercancel', endPointer)
 vp.addEventListener('dblclick', e => {
   if (e.target.closest('[data-cvui]:not([data-openboard])')) return
@@ -11602,7 +11622,7 @@ async function deleteRefsBulk(refs, tagToo) {
   toast(`Deleted ${saved.length} reference${saved.length === 1 ? '' : 's'}${tagToo ? ` and #${tagToo}` : ''}`, { label: 'Undo', ms: saved.length >= 10 ? 12000 : 7000, run: async () => {
     clearTimeout(purge)
     rememberRemoved(refs, false)
-    for (const [id] of saved) S.gone.delete(id)
+    for (const [id] of saved) { S.gone.delete(id); (S.restored ||= new Set()).add(id) }
     for (let i = 0; i < saved.length; i += 20) await Promise.all(saved.slice(i, i + 20).map(([id, data]) => S.db.collection('refs').doc(id).set(data).catch(() => {})))
     if (meta) await S.db.collection('tags').doc(tagDocId(tagToo)).set({ ...meta, updatedAt: new Date().toISOString() }).catch(() => {})
     toast('Restored')
@@ -12277,6 +12297,7 @@ function syncProjectRefsSoon() {
 
 // ---- pages
 function openProject(id) {
+  while (stack.length) closeTop() // e.g. the big view, when "Open" on the "Added to …" toast brings you here
   PJ.id = id; lsSet('dailies.project', id)
   if (!projectsOn()) showView('projects'); else renderProjects()
 }
@@ -12507,6 +12528,7 @@ function openProjActs(id, btn) {
   PJ.menuIds = []; PJ.menuFor = id
   m.innerHTML = `<button type="button" role="menuitem" data-pjact="rename">Rename</button><button type="button" role="menuitem" class="danger" data-pjact="delete">Delete project</button>`
   m.hidden = false
+  btn.setAttribute('aria-expanded', 'true')
   const r = m.getBoundingClientRect()
   placeAt(m, Math.max(8, Math.min(innerWidth - r.width - 8, a.right - r.width)), a.bottom + 6)
   m.querySelector('button').focus({ preventScroll: true })
@@ -12574,7 +12596,7 @@ function openProjMenu(ids, rect, after = null) {
   placeAt(m, Math.max(8, Math.min(innerWidth - r.width - 8, rect.right - r.width)), rect.bottom + 6 + r.height > innerHeight ? Math.max(8, rect.top - r.height - 6) : rect.bottom + 6)
   ;(PJ.list.length ? m.querySelector('[data-pjm]') : $('#pjm-name')).focus({ preventScroll: true })
 }
-const closeProjMenu = () => { $('#projmenu').hidden = true; PJ.menuIds = []; PJ.menuAfter = null; PJ.menuFor = null }
+const closeProjMenu = () => { $('#projmenu').hidden = true; PJ.menuIds = []; PJ.menuAfter = null; PJ.menuFor = null; document.querySelectorAll('.pj-cardmore[aria-expanded="true"]').forEach(b => b.setAttribute('aria-expanded', 'false')) }
 $('#projmenu').addEventListener('click', e => {
   const act = e.target.closest('[data-pjact]')?.dataset.pjact
 
@@ -12641,7 +12663,7 @@ document.addEventListener('keydown', e => {
   if (canvasKey(e)) return
   const typing = e.target && e.target.closest ? e.target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])') : null
   if (e.key === 'Escape' && menuFor) { e.preventDefault(); closeMenu(); return }
-  if (e.key === 'Escape' && !$('#bgpop').hidden) { e.preventDefault(); toggleBgPop(false); $('#bg-btn').focus(); return }
+  if (e.key === 'Escape' && !$('#bgpop').hidden) { e.preventDefault(); toggleBgPop(false); ([$('#gb-bg'), $('#settings-btn')].find(b => b.offsetParent) || $('#settings-btn')).focus(); return }
   if (e.key === 'Escape' && !$('#tagmenu').hidden) { e.preventDefault(); $('#tagmenu').hidden = true; document.querySelectorAll('[data-menu][aria-expanded="true"]').forEach(b => b.setAttribute('aria-expanded', 'false')); return } // Type / Order / Export menus
   if (e.key === 'Escape' && !$('#projmenu').hidden) { e.preventDefault(); closeProjMenu(); return }
   if (e.key === 'Escape' && !$('#th-menu').hidden) { e.preventDefault(); $('#th-menu').hidden = true; return }
