@@ -4766,11 +4766,11 @@ function renderImpProgress() {
   run.finished = !!run.stopped || run.boards.every(doneOf)
   const got = run.boards.reduce((n, b) => n + b.got, 0)
   renderImpPill(run, got)
-  if (!box || $('#import').hidden) return
+  if (!box || $('#import').hidden || IMP.view !== 'progress') return // the box may be showing another import (YouTube, Instagram) right now
   if (run.finished) IMP.did.pinterest = plural(run.boards.reduce((n, b) => n + b.got, 0), 'pin')
   const head = run.stopped ? 'Import stopped' : run.finished ? 'Your boards are in' : 'Bringing in your boards'
   const lead = run.stopped ? `${plural(got, 'pin')} are in your library. Boards that hadn’t finished were unfollowed. Import again whenever you like.` : run.finished ? `${plural(got, 'pin')} from ${plural(run.boards.length, 'board')} are in your library. New pins on these boards will arrive by themselves.` : 'Pins land in your library as they arrive. You can close this: it carries on while Dailies is open.'
-  if (!box.firstChild || box.dataset.state !== String(run.finished)) {
+  if (!box.firstChild || box.dataset.state !== String(run.finished) || !box.querySelector('.imp-strip')) {
     box.dataset.state = String(run.finished)
     box.innerHTML = `${impArt(['pinterest'], run.finished)}<h2></h2><p class="imp-lead"></p><div class="imp-strip"></div><div class="imp-rows"></div><p class="imp-note" hidden></p>${impFootHtml('data-close-imp', !run.finished)}`
     wireImpMore(box)
