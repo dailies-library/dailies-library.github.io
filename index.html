@@ -151,9 +151,13 @@
         const { error } = await sb.from('docs').upsert(rows.slice(i, i + 200), { onConflict: 'owner,col,id' })
         if (error) { console.warn('not saved', error); for (const r of rows.slice(i, i + 200)) pending.set(K(r.col, r.id), 'set'); toastLater('Couldn’t save just now. Retrying…') }
       }
-      for (const [col, id] of dels) {
-        const { error } = await sb.from('docs').delete().eq('owner', uid).eq('col', col).eq('id', id)
-        if (error) { console.warn('not deleted', error); pending.set(K(col, id), 'delete') }
+      // deletes go as one request per collection (deleting a 100-pin board used to be 100 round trips, one after the other)
+      const byCol = new Map()
+      for (const [col, id] of dels) (byCol.get(col) || byCol.set(col, []).get(col)).push(id)
+      for (const [col, ids] of byCol) for (let i = 0; i < ids.length; i += 200) {
+        const part = ids.slice(i, i + 200)
+        const { error } = await sb.from('docs').delete().eq('owner', uid).eq('col', col).in('id', part)
+        if (error) { console.warn('not deleted', error); for (const id of part) pending.set(K(col, id), 'delete') }
       }
       if (pending.size) { clearTimeout(flushTimer); flushTimer = setTimeout(flush, 4000) }
     })
@@ -627,6 +631,11 @@ main { padding: 32px 40px 96px; }
 .shelf h2 { margin: 0 0 12px; font-size: 15px; font-weight: 500; letter-spacing: -.005em; color: var(--on-backdrop, var(--text)); }
 .shelf-row { display: flex; gap: 22px; overflow-x: auto; scroll-snap-type: x proximity; scroll-behavior: smooth; scrollbar-width: none; }
 .shelf-row::-webkit-scrollbar { display: none; }
+.collbox { flex: none; position: relative; scroll-snap-align: start; }
+/* a board's own ⋯ (remove the board, with or without its pins): on the pictures' top-right corner, on hover */
+.collmore { top: 8px; right: 8px; }
+.collbox:hover .collmore, .collmore[aria-expanded="true"], .collmore:focus-visible { opacity: 1; }
+@media (hover: none) { .collmore { opacity: 1; } }
 .coll { flex: none; width: 236px; padding: 0; border: 0; background: none; color: inherit; text-align: left; cursor: pointer; scroll-snap-align: start; font: inherit; }
 .coll .trio { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; height: 98px; border-radius: 14px; overflow: hidden; background: var(--surface-2); transition: transform .25s cubic-bezier(.2, .7, .2, 1), box-shadow .25s ease; }
 .coll .trio img, .coll .trio i { display: block; width: 100%; height: 100%; object-fit: cover; background: var(--surface-2); }
@@ -4697,8 +4706,10 @@ function inOrder(db) {
 
   db.collection('refs').orderBy('savedAt', 'desc').limit(1000).onSnapshot(snap => {
     const known = S.loaded ? new Set(S.refs.map(r => r.id)) : null
-    S.refs = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+    S.refs = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(r => !(S.gone && S.gone.has(r.id))) // still being deleted: never flickers back
     if (known) setTimeout(() => newSaves(S.refs.filter(r => !known.has(r.id)), known.size), 0)
+    // what arrives while you're looking joins at the bottom, one after another, so nothing on screen moves (Rohit: no abrupt shifts)
+    if (known) { S.arrived ||= []; for (const r of S.refs) if (!known.has(r.id) && !S.arrived.includes(r.id)) S.arrived.push(r.id) }
     syncVocab()
     const first = !S.loaded
     S.loaded = true
@@ -4927,7 +4938,7 @@ function renderBoards() {
   sec.classList.toggle('still', !fresh) // cards only fade in when the row first opens, not when you pick a board
   $('#boards-row').innerHTML = names.map((b, i) => {
     const p = pics(b)
-    return `<button class="coll" type="button" style="--i:${Math.min(i, 9)}" data-board="${esc(b)}" aria-pressed="${S.board === b}"><span class="trio">${[0, 1, 2].map(i => p[i] ? `<img alt="" decoding="async" src="${esc(imgSrc(p[i].image))}"${focusAttr(p[i])}>` : '<i></i>').join('')}</span><b>${esc(b)}</b><small>${by[b].length} references</small></button>`
+    return `<div class="collbox" style="--i:${Math.min(i, 9)}"><button class="coll" type="button" data-board="${esc(b)}" aria-pressed="${S.board === b}"><span class="trio">${[0, 1, 2].map(i => p[i] ? `<img alt="" decoding="async" src="${esc(imgSrc(p[i].image))}"${focusAttr(p[i])}>` : '<i></i>').join('')}</span><b>${esc(b)}</b><small>${by[b].length} references</small></button>${S.canWrite ? `<button class="collmore more" type="button" data-boardmore="${esc(b)}" aria-label="Board options" aria-haspopup="menu"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg></button>` : ''}</div>`
   }).join('')
   requestAnimationFrame(boardsNav)
 }
@@ -4941,6 +4952,7 @@ addEventListener('resize', () => { if ($('#boards').classList.contains('open')) 
 $('#boards-prev').onclick = () => { const row = $('#boards-row'); row.scrollBy({ left: -row.clientWidth * .8 }) }
 $('#boards-next').onclick = () => { const row = $('#boards-row'); row.scrollBy({ left: row.clientWidth * .8 }) }
 $('#boards-row').addEventListener('click', e => {
+  const m = e.target.closest('[data-boardmore]'); if (m) { e.stopPropagation(); openBoardMenu(m.dataset.boardmore, m); return }
   const b = e.target.closest('[data-board]'); if (!b) return
   S.board = S.board === b.dataset.board ? null : b.dataset.board // click a picked board again for all of the app
   render()
@@ -5008,6 +5020,10 @@ function render() {
     else if (S.sort === 'shuffle') { const k = new Map(S.filtered.map(r => [r.id, shuffleKey(r.id)])); S.filtered.sort((a, b) => k.get(a.id) - k.get(b.id)) }
     else if (S.sort === 'color') S.filtered.sort((a, b) => hueKey(a) - hueKey(b))
     else if (S.sort !== 'new') sortBy(S.sort)
+  }
+  if (!S.smart && !S.similar && S.arrived && S.arrived.length) { // this visit's new saves go last, in the order they came
+    const late = new Map(S.arrived.map((id, i) => [id, i]))
+    S.filtered = [...S.filtered.filter(r => !late.has(r.id)), ...S.filtered.filter(r => late.has(r.id)).sort((a, b) => late.get(a.id) - late.get(b.id))]
   }
   S.filtered = brainMerge(S.filtered)
   if (S.cstOn) cstSync() // a save while the Constellation is open joins it
@@ -5851,6 +5867,26 @@ function openMenu(id, anchor) {
   placeAt(menu, Math.max(8, Math.min(innerWidth - m.width - 8, a.right - m.width)), a.bottom + 6 + m.height > innerHeight ? a.top - m.height - 6 : a.bottom + 6)
   menu.querySelector('button, a').focus({ preventScroll: true })
 }
+// a board (or Instagram collection): stop following it, or remove it with its pins (they won't come back from the board)
+const boardRefs = name => S.refs.filter(r => r.board === name && r.source === S.source)
+const boardFollows = name => { const k = S.source === 'instagram' ? 'instagram' : 'pinterest', n = String(name).toLowerCase(); return { k, list: (S.settings && S.settings[k]) || [], match: x => [x.label, x.board, x.name].some(v => v && String(v).toLowerCase().replace(/-/g, ' ') === n.replace(/-/g, ' ')) } }
+function openBoardMenu(name, anchor) {
+  const menu = $('#cardmenu')
+  if (menuFor === 'board:' + name) return closeMenu()
+  closeMenu()
+  menuFor = 'board:' + name
+  anchor.setAttribute('aria-expanded', 'true')
+  const f = boardFollows(name), followed = f.list.some(f.match), n = boardRefs(name).length, what = S.source === 'instagram' ? 'collection' : 'board'
+  menu.innerHTML = `${followed ? `<button type="button" role="menuitem" data-act="unfollow-board">Stop following this ${what}</button>` : ''}
+    <button type="button" role="menuitem" class="danger" data-act="delete-board">Delete ${what} and its ${n} ${S.source === 'instagram' ? 'post' : 'pin'}${n === 1 ? '' : 's'}</button>`
+  menu.hidden = false
+  const a = anchor.getBoundingClientRect(), m = menu.getBoundingClientRect()
+  placeAt(menu, Math.max(8, Math.min(innerWidth - m.width - 8, a.right - m.width)), a.bottom + 6 + m.height > innerHeight ? a.top - m.height - 6 : a.bottom + 6)
+}
+async function unfollowBoard(name) {
+  const f = boardFollows(name)
+  await setSetting({ [f.k]: f.list.filter(x => !f.match(x)) }).catch(() => {})
+}
 function closeMenu() {
   $('#cardmenu').hidden = true
   document.querySelectorAll('.more[aria-expanded="true"]').forEach(b => b.setAttribute('aria-expanded', 'false'))
@@ -5859,6 +5895,20 @@ function closeMenu() {
 $('#cardmenu').addEventListener('click', async e => {
   const item = e.target.closest('[data-act]')
   if (!item || !menuFor) return
+  if (menuFor.startsWith('board:')) {
+    const name = menuFor.slice(6), act = item.dataset.act, what = S.source === 'instagram' ? 'collection' : 'board'
+    closeMenu()
+    if (act === 'unfollow-board') { await unfollowBoard(name); toast(`Stopped following “${name}”. Its pins stay in your library.`) }
+    if (act === 'delete-board') {
+      const refs = boardRefs(name)
+      if (!(await askConfirm({ title: `Delete the ${what} “${name}”?`, body: `Its ${refs.length} ${S.source === 'instagram' ? 'post' : 'pin'}${refs.length === 1 ? '' : 's'} leave your library, and Dailies stops following the ${what}, so they won’t come back.` }))) return
+      if (S.board === name) S.board = null
+      const gone = deleteRefsBulk(refs) // off the wall at once; its toast has Undo
+      await unfollowBoard(name)
+      await gone
+    }
+    return
+  }
   const r = byId(menuFor)
   const act = item.dataset.act
   if (act === 'open') { closeMenu(); return }
@@ -11362,11 +11412,15 @@ async function untagAll(t, refs) {
 async function deleteRefsBulk(refs, tagToo) {
   const saved = refs.map(({ id, ...data }) => [id, data])
   const meta = tagToo && S.tagMeta.get(tagToo)
-  for (const [id] of saved) await S.db.collection('refs').doc(id).delete().catch(() => {})
-  rememberRemoved(refs)
-  if (meta) await S.db.collection('tags').doc(tagDocId(tagToo)).delete().catch(() => {})
+  // all of them leave the wall at once (no counting down one by one); the stored copies are deleted behind the scenes, many at a time
+  S.gone ||= new Set()
+  for (const [id] of saved) S.gone.add(id)
+  S.refs = S.refs.filter(r => !S.gone.has(r.id))
   if (tagToo) S.tag = null
   render()
+  rememberRemoved(refs)
+  for (let i = 0; i < saved.length; i += 20) await Promise.all(saved.slice(i, i + 20).map(([id]) => S.db.collection('refs').doc(id).delete().catch(() => {})))
+  if (meta) await S.db.collection('tags').doc(tagDocId(tagToo)).delete().catch(() => {})
   // the stored files go a little later, so Undo can still bring everything back
   const purge = setTimeout(() => {
     if (!S.assets) return
@@ -11375,7 +11429,8 @@ async function deleteRefsBulk(refs, tagToo) {
   toast(`Deleted ${saved.length} reference${saved.length === 1 ? '' : 's'}${tagToo ? ` and #${tagToo}` : ''}`, { label: 'Undo', run: async () => {
     clearTimeout(purge)
     rememberRemoved(refs, false)
-    for (const [id, data] of saved) await S.db.collection('refs').doc(id).set(data).catch(() => {})
+    for (const [id] of saved) S.gone.delete(id)
+    for (let i = 0; i < saved.length; i += 20) await Promise.all(saved.slice(i, i + 20).map(([id, data]) => S.db.collection('refs').doc(id).set(data).catch(() => {})))
     if (meta) await S.db.collection('tags').doc(tagDocId(tagToo)).set({ ...meta, updatedAt: new Date().toISOString() }).catch(() => {})
     toast('Restored')
   } })
