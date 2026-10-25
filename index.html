@@ -7,8 +7,11 @@
   // Sign-in is one "Continue with Google" button (invideo accounts only; Rohit, 25 Oct: "just connect to google… they just select
   // their email"). It switches itself on: the screen asks Supabase whether Google is turned on there (PUBLISHING-HANDOFF.md) and
   // until it is, shows the email and password form, so nobody lands on Supabase's "provider is not enabled" page
-  let GOOGLE = false
-  const googleOn = fetch(SUPA_URL + '/auth/v1/settings', { headers: { apikey: SUPA_KEY } }).then(r => r.json()).then(s => !!(s.external && s.external.google)).catch(() => false)
+  // Which one-click sign-ins are switched on in Supabase (Google and/or Slack). The email + password form always shows too
+  // (Rohit, 25 Oct: "email and password now are fine"; "Confirm email" is off, so creating an account signs you straight in)
+  let PROV = { google: false, slack: false }
+  const provOn = fetch(SUPA_URL + '/auth/v1/settings', { headers: { apikey: SUPA_KEY } }).then(r => r.json())
+    .then(s => ({ google: !!(s.external && s.external.google), slack: !!(s.external && s.external.slack_oidc) })).catch(() => PROV)
   window.DAILIES_WEB = true
   const W = (window.DAILIES_WEB_API = { email: '' })
   const sb = window.supabase.createClient(SUPA_URL, SUPA_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } })
@@ -27,7 +30,7 @@
   W.signOut = () => sb.auth.signOut()
 
   async function showGate() {
-    GOOGLE = await googleOn
+    PROV = await provOn
     const mount = () => {
       if (uid || document.getElementById('gate')) return // (signed in while we asked Supabase)
       const g = document.createElement('div')
@@ -53,12 +56,13 @@
       <form class="g-card" autocomplete="on">
         <div class="logo"><img alt="" id="g-mark">dailies</div>
         <p>Your reference library. Save from Instagram, X, YouTube, Pinterest and anywhere else, then find it again in seconds.</p>
-        ${GOOGLE ? `<button type="button" class="google" id="g-google"><svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="m6.3 14.7 6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg><span>Continue with Google</span></button>
-        <p class="fine">Pick your @invideo.io Google account. New or returning, it's the same button.</p>` : `
+        ${PROV.slack ? `<button type="button" class="google" id="g-slack"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#E01E5A" d="M5.04 15.16a2.52 2.52 0 1 1-2.52-2.52h2.52zm1.27 0a2.52 2.52 0 1 1 5.04 0v6.32a2.52 2.52 0 1 1-5.04 0z"/><path fill="#36C5F0" d="M8.84 5.04a2.52 2.52 0 1 1 2.52-2.52v2.52zm0 1.27a2.52 2.52 0 1 1 0 5.04H2.52a2.52 2.52 0 1 1 0-5.04z"/><path fill="#2EB67D" d="M18.96 8.84a2.52 2.52 0 1 1 2.52 2.52h-2.52zm-1.27 0a2.52 2.52 0 1 1-5.04 0V2.52a2.52 2.52 0 1 1 5.04 0z"/><path fill="#ECB22E" d="M15.16 18.96a2.52 2.52 0 1 1-2.52 2.52v-2.52zm0-1.27a2.52 2.52 0 1 1 0-5.04h6.32a2.52 2.52 0 1 1 0 5.04z"/></svg><span>Continue with Slack</span></button>` : ''}
+        ${PROV.google ? `<button type="button" class="google" id="g-google"><svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="m6.3 14.7 6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg><span>Continue with Google</span></button>` : ''}
+        ${PROV.slack || PROV.google ? `<p class="or">or with your invideo email</p>` : ''}
         <input type="email" id="g-email" placeholder="you@invideo.io" autocomplete="username" required>
         <input type="password" id="g-pass" placeholder="Password" autocomplete="current-password" minlength="8" required>
         <button type="submit" class="primary" id="g-go">Sign in</button>
-        <button type="button" class="ghost" id="g-mode">New here? Create an account</button>`}
+        <button type="button" class="ghost" id="g-mode">New here? Create an account</button>
         <div class="msg" id="g-msg"></div>
       </form>`
       document.body.appendChild(g)
@@ -66,21 +70,20 @@
       let creating = false
       const $ = s => g.querySelector(s)
       const say = (m, bad) => { $('#g-msg').textContent = m; $('#g-msg').className = 'msg' + (bad ? ' bad' : '') }
-      if (GOOGLE) {
-        // back from Google with a refusal (a non-invideo account, or Cancel): say so in plain words
-        const back = new URLSearchParams(location.hash.slice(1) + '&' + location.search.slice(1))
-        const why = back.get('error_description') || back.get('error')
-        if (why) {
-          say(/database error|invideo/i.test(why) ? 'Dailies is for invideo accounts. Pick your @invideo.io Google account.' : /access_denied|cancel/i.test(why) ? 'Sign-in was cancelled. Try again when you’re ready.' : why, true)
-          history.replaceState(null, '', location.pathname)
-        }
-        $('#g-google').onclick = async () => {
-          $('#g-google').disabled = true; say('Opening Google…')
-          const { error } = await sb.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: location.origin, queryParams: { hd: 'invideo.io', prompt: 'select_account' } } })
-          if (error) { say(error.message, true); $('#g-google').disabled = false }
-        }
-        return
+      // back from Slack or Google with a refusal (a non-invideo account, or Cancel): say so in plain words
+      const back = new URLSearchParams(location.hash.slice(1) + '&' + location.search.slice(1))
+      const why = back.get('error_description') || back.get('error')
+      if (why) {
+        say(/database error|invideo/i.test(why) ? 'Dailies is for invideo accounts. Pick your invideo account.' : /access_denied|cancel/i.test(why) ? 'Sign-in was cancelled. Try again when you’re ready.' : why, true)
+        history.replaceState(null, '', location.pathname)
       }
+      const social = async (btn, provider, queryParams) => {
+        btn.disabled = true; say(provider === 'google' ? 'Opening Google…' : 'Opening Slack…')
+        const { error } = await sb.auth.signInWithOAuth({ provider, options: { redirectTo: location.origin, queryParams } })
+        if (error) { say(error.message, true); btn.disabled = false }
+      }
+      if (PROV.slack) $('#g-slack').onclick = () => social($('#g-slack'), 'slack_oidc')
+      if (PROV.google) $('#g-google').onclick = () => social($('#g-google'), 'google', { hd: 'invideo.io', prompt: 'select_account' })
       $('#g-mode').onclick = () => {
         creating = !creating
         $('#g-go').textContent = creating ? 'Create account' : 'Sign in'
@@ -96,7 +99,7 @@
         try {
           const { data, error } = creating ? await sb.auth.signUp({ email, password }) : await sb.auth.signInWithPassword({ email, password })
           if (error) throw error
-          if (creating && !data.session) say('Almost there: open the confirmation email we just sent, then sign in here.')
+          if (creating && !data.session) say('Almost there: open the confirmation email we just sent, then sign in here.') // only if "Confirm email" is switched back on in Supabase
         } catch (e) {
           const m = String(e.message || e)
           say(/invalid login/i.test(m) ? 'That email and password don’t match. New here? Create an account.'
@@ -732,6 +735,15 @@ body.canvas-mode #import-btn, body.projects-mode #import-btn { display: none; }
 .imp-src .chev { margin-left: auto; width: 16px; height: 16px; color: var(--faint); flex: none; transition: translate .2s, color .15s; }
 .imp-src:hover .chev { translate: 2px 0; color: var(--text); }
 .imp-skip { margin-top: 20px; text-align: center; }
+.empty .linkbtn { font: inherit; color: inherit; font-weight: 600; text-decoration-color: currentColor; }
+.imp-steps { margin: 0 0 16px; padding: 0; list-style: none; display: grid; gap: 10px; }
+.imp-steps li { display: flex; gap: 12px; align-items: flex-start; padding: 12px 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); font-size: 14px; line-height: 1.5; color: var(--text); }
+.imp-dl { display: inline-block; padding: 7px 14px; border-radius: 999px; background: var(--text); color: var(--bg); font-weight: 600; text-decoration: none; margin: 0 4px 6px 0; }
+.imp-dl:hover { opacity: .9; }
+.imp-status { margin: 0 0 12px; font-size: 14px; color: var(--muted); display: flex; gap: 8px; align-items: center; }
+.imp-status.ok { color: #7fd79a; }
+.imp-status svg { width: 16px; height: 16px; }
+.imp-fine { margin: 0; font-size: 13px; color: var(--faint); line-height: 1.5; }
 .imp-did { display: inline-flex; vertical-align: -2px; margin-right: 5px; color: var(--ok); }
 .imp-did svg { width: 13px; height: 13px; }
 .imp-src .tx span:has(.imp-did) { color: var(--ok); }
@@ -2383,7 +2395,7 @@ input, textarea, select, .field { transition: border-color .18s ease, box-shadow
         <div class="dsec-b"><div class="dsec-in"><div class="dproj" id="d-proj"></div></div></div>
       </section>
       <section class="dsec" data-sec="quick" id="d-qwrap" hidden>
-        <div class="dsec-h"><button type="button" class="dsec-t" aria-expanded="true">Quick tags<svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></button><span class="dsec-x" id="d-qhint">keys 1–9</span></div>
+        <div class="dsec-h"><button type="button" class="dsec-t" aria-expanded="true">Quick tags<svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></button><span class="dsec-x" id="d-qhint"></span></div>
         <div class="dsec-b"><div class="dsec-in"></div></div>
       </section>
       <section class="dsec" data-sec="cap" id="d-cap-wrap">
@@ -4104,7 +4116,7 @@ function toast(msg, action) {
   if (action) el.querySelector('button').onclick = () => { action.run(); el.classList.remove('show') }
   el.classList.add('show')
   clearTimeout(toastTimer)
-  toastTimer = setTimeout(() => el.classList.remove('show'), action ? 5000 : 2800)
+  toastTimer = setTimeout(() => el.classList.remove('show'), action ? (action.ms || 5000) : 2800)
 }
 
 // ------------------------------------------------------------------ milestone confetti (the one celebration Rohit kept)
@@ -4193,6 +4205,8 @@ const followedBoard = b => ((S.settings && S.settings.pinterest) || []).some(h =
 const plural = (n, w) => `${n.toLocaleString()} ${w}${n === 1 ? '' : 's'}`
 const impArt = (keys, still) => `<div class="imp-art${still ? ' still' : ''}" aria-hidden="true"><span class="lgs">${keys.map((k, i) => `<span class="lg" style="--i:${i}">${glyph(k, true)}</span>`).join('')}</span><span class="dots">${[0, 1, 2].map(i => `<i style="--i:${i}"></i>`).join('')}</span><span class="lg" style="--i:${keys.length + 1}"><img alt="" src="${$('.brand .mark').src}"></span></div>`
 
+const EXT_IC = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 3.5a2 2 0 0 1 4 0V5h3a1 1 0 0 1 1 1v3h1.5a2 2 0 0 1 0 4H18v4a1 1 0 0 1-1 1h-3v-1.5a2 2 0 0 0-4 0V18H7a1 1 0 0 1-1-1v-3H4.5a2 2 0 0 1 0-4H6V6a1 1 0 0 1 1-1h3z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>'
+document.addEventListener('click', e => { const b = e.target.closest('[data-get-ext]'); if (!b) return; e.preventDefault(); closeTransient && closeTransient(); if ($('#import').hidden) openImport(false); impGo('extension') })
 function openImport(first) {
   if (!S.canWrite) return
   IMP.first = !!first
@@ -4210,6 +4224,7 @@ function renderImport() {
   const body = $('#imp-body'), back = `<button class="imp-back" type="button" data-imp-back>${BACK_IC}Import</button>`
   if (IMP.view === 'home') {
     const srcs = [
+      ...(window.DAILIES_WEB && !S.ext ? [['extension', 'Get the Chrome extension', 'Needed for Pinterest, Instagram and YouTube, and for Save buttons on posts']] : []),
       ['pinterest', 'Pinterest', 'Your boards, from your username'],
       ['instagram', 'Instagram', 'Your saved collections'],
       ['youtube', 'YouTube', 'A playlist, from its link'],
@@ -4220,8 +4235,20 @@ function renderImport() {
       ${IMP.first ? '<p class="imp-kick">Welcome to Dailies</p>' : ''}
       <h2>Bring your references in</h2>
       <p class="imp-lead">${IMP.first ? 'Start with what you’ve already saved. After this, new saves arrive by themselves.' : 'From wherever you’ve been saving them. New saves keep arriving after the first import.'}</p>
-      <div class="imp-srcs">${srcs.map(([k, t, sub], i) => `<button class="imp-src" type="button" data-imp-src="${k}" style="--i:${i}"><span class="lg">${glyph(k === 'links' ? 'web' : k, true)}</span><span class="tx"><b>${t}</b><span>${IMP.did[k] ? `<i class="imp-did">${CHECK_IC}</i>Imported · ${esc(IMP.did[k])}` : sub}</span></span>${CHEV_R}</button>`).join('')}</div>
+      <div class="imp-srcs">${srcs.map(([k, t, sub], i) => `<button class="imp-src" type="button" data-imp-src="${k}" style="--i:${i}"><span class="lg">${k === 'extension' ? EXT_IC : glyph(k === 'links' ? 'web' : k, true)}</span><span class="tx"><b>${t}</b><span>${IMP.did[k] ? `<i class="imp-did">${CHECK_IC}</i>Imported · ${esc(IMP.did[k])}` : sub}</span></span>${CHEV_R}</button>`).join('')}</div>
       ${IMP.first ? '<div class="imp-skip"><button class="linkbtn" type="button" data-imp-skip>Start with an empty library</button></div>' : ''}`
+  } else if (IMP.view === 'extension') {
+    body.innerHTML = `${back}
+      <h2>Get the Chrome extension</h2>
+      <p class="imp-lead">It saves posts with one click, fetches pictures for links you paste, and brings in your Pinterest boards, Instagram saves and YouTube playlists. Chrome on a computer only. Four steps, once.</p>
+      <ol class="imp-steps">
+        <li><span><a class="imp-dl" href="/dailies-extension.zip" download>Download the extension</a> and double-click the zip to unpack it. Keep the <b>dailies-extension</b> folder somewhere it can stay (not Downloads if you clear it).</span></li>
+        <li><span>In Chrome, open <b>chrome://extensions</b> (copy that into the address bar) and turn on <b>Developer mode</b>, top right.</span></li>
+        <li><span>Press <b>Load unpacked</b> and choose the <b>dailies-extension</b> folder.</span></li>
+        <li><span>Come back here and reload this page.</span></li>
+      </ol>
+      <p class="imp-status ${S.ext ? 'ok' : ''}">${S.ext ? `${CHECK_IC} Connected. The extension is talking to this page.` : 'Not connected yet. After step 3, reload this page and this line turns green.'}</p>
+      <p class="imp-fine">Pin it: click the puzzle piece in Chrome’s toolbar and pin Dailies, so the Save button is always one click away. A one-click Chrome Web Store install is coming.</p>`
   } else if (IMP.view === 'pinterest') {
     body.innerHTML = `${back}${impArt(['pinterest'], true)}
       <h2>Import from Pinterest</h2>
@@ -4633,7 +4660,7 @@ function helpHtml(set) {
   const keys = [['⌘Z', 'Undo'], ['⇧⌘Z', 'Redo'], ['Delete', 'Delete what’s picked on the canvas']]
   return card('M12 5v14M5 12h14', 'Save', [
       '<b>Save</b> (top bar): paste a link. <b>More</b> adds hashtags, an image or a note.',
-      'Chrome extension: move the pointer over a post on Instagram, X, Pinterest, YouTube, Behance or Dribbble and press its Save button; or one click saves the page you’re on.',
+      `Chrome extension: move the pointer over a post on Instagram, X, Pinterest, YouTube, Behance or Dribbble and press its Save button; or one click saves the page you’re on.${window.DAILIES_WEB ? ' <button class="linkbtn" type="button" data-get-ext>Get the extension</button>' : ''}`,
       slack && 'Share a link to your Slack channel and it lands here.',
     ]) +
     card('M10.5 4a6.5 6.5 0 1 0 4.1 11.6l4.4 4.4M10.5 4a6.5 6.5 0 0 1 4.1 11.6', 'Find', [
@@ -5124,7 +5151,7 @@ function render() {
   if (!S.loaded) return
   if (!S.refs.length) {
     empty.hidden = false
-    empty.innerHTML = window.DAILIES_WEB ? '<h2>Nothing saved yet</h2><p>Press <b>Save</b> and paste a link, or install the Dailies Chrome extension and use it on any page. Have a Dailies file already? Bring it in from <b>Settings → Your data</b>.</p>'
+    empty.innerHTML = window.DAILIES_WEB ? '<h2>Nothing saved yet</h2><p>Press <b>Save</b> and paste a link, or <button class="linkbtn" type="button" data-get-ext>get the Chrome extension</button> and save from any page with one click. Have a Dailies file already? Bring it in from <b>Settings → Your data</b>.</p>'
       : window.DAILIES_DESKTOP ? '<h2>Nothing saved yet</h2><p>Press <b>Save</b> and paste a link from Instagram, YouTube, X, TikTok, Pinterest or anywhere else. Already using Dailies on claude.ai? Bring your library over from <b>Settings → Your data</b>.</p>'
       : `<h2>Nothing saved yet</h2><p>Share a link to <b>#${esc(S.settings?.channelName || 'your references channel')}</b> in Slack, or press <b>Save</b> and paste one here.</p>`
   } else if (!S.filtered.length) {
@@ -6670,7 +6697,7 @@ function openInbox() {
   })
   window.addEventListener('message', e => {
     if (e.source !== window || !e.data) return
-    if (e.data.type === 'dailies:ext') { S.ext = String(e.data.v || '1'); S.extGone = false } // the extension says hello (1.19 and later)
+    if (e.data.type === 'dailies:ext') { S.ext = String(e.data.v || '1'); S.extGone = false; if (!$('#import').hidden && (IMP.view === 'home' || IMP.view === 'extension')) renderImport() } // the extension says hello (1.19 and later)
     if (e.data.type === 'dailies:ext-gone') { S.ext = null; S.extGone = true } // it was reloaded or updated while this page was open (1.28 and later)
     if (e.data.type === 'dailies:ig-pause') { S.igPause = e.data.until; if (!$('#import').hidden && IMP.view === 'instagram') renderIgRes(); if (!$('#import').hidden && IMP.view === 'igprog') impIgSoon() }
     if (e.data.type === 'dailies:ig-progress') impIgProgress(e.data)
@@ -11426,7 +11453,7 @@ async function deleteRefsBulk(refs, tagToo) {
     if (!S.assets) return
     for (const [, d] of saved) for (const a of [d.image, d.video, d.gif, d.scrub && d.scrub.id]) if (a) S.assets.delete(a).catch(() => {})
   }, 10000)
-  toast(`Deleted ${saved.length} reference${saved.length === 1 ? '' : 's'}${tagToo ? ` and #${tagToo}` : ''}`, { label: 'Undo', run: async () => {
+  toast(`Deleted ${saved.length} reference${saved.length === 1 ? '' : 's'}${tagToo ? ` and #${tagToo}` : ''}`, { label: 'Undo', ms: saved.length >= 10 ? 12000 : 7000, run: async () => {
     clearTimeout(purge)
     rememberRemoved(refs, false)
     for (const [id] of saved) S.gone.delete(id)
