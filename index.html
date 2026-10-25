@@ -4399,7 +4399,7 @@ function renderYtRes() {
   const box = $('#imp-res')
   if (!box) return
   if (IMP.busy) { box.innerHTML = '<div class="imp-bar"><b>Reading the playlist…</b></div><div class="imp-boards"><div class="imp-board sk"><div class="imp-cover"></div><b></b><small></small></div></div>'; return }
-  if (IMP.err) { box.innerHTML = `<p class="imp-err">${esc(IMP.err)}</p>`; return }
+  if (IMP.err) { box.innerHTML = `<p class="imp-err">${esc(IMP.err)}${extLink(IMP.err)}</p>`; return }
   const l = IMP.yt
   if (!l) { box.innerHTML = ''; return }
   const have = l.videos.filter(v => S.refs.some(r => r.key === dedupeKey('https://www.youtube.com/watch?v=' + v.id))).length
@@ -4485,7 +4485,7 @@ function renderIgRes() {
   const ig = IMP.ig
   if (IMP.busy) { box.innerHTML = '<div class="imp-bar"><b>Opening your Saved page…</b></div><div class="imp-boards">' + Array.from({ length: 3 }, (_, i) => `<div class="imp-board sk" style="--i:${i}"><div class="imp-cover"></div><b></b><small></small></div>`).join('') + '</div>'; return }
   if (!ig) {
-    box.innerHTML = `${igPauseNote()}${IMP.err ? `<p class="imp-err" style="margin: 0 0 12px">${esc(IMP.err)}</p>` : ''}<ol class="imp-steps"><li>Be signed in to Instagram in this Chrome</li><li>Press Find my collections. A tab opens by itself for a moment</li></ol><div class="imp-acts"><button class="btn primary" type="button" data-imp-iglist${S.igPause > Date.now() ? ' disabled' : ''}>Find my collections</button></div>`
+    box.innerHTML = `${igPauseNote()}${IMP.err ? `<p class="imp-err" style="margin: 0 0 12px">${esc(IMP.err)}${extLink(IMP.err)}</p>` : ''}<ol class="imp-steps"><li>Be signed in to Instagram in this Chrome</li><li>Press Find my collections. A tab opens by itself for a moment</li></ol><div class="imp-acts"><button class="btn primary" type="button" data-imp-iglist${S.igPause > Date.now() ? ' disabled' : ''}>Find my collections</button></div>`
     box.querySelector('[data-imp-iglist]')?.addEventListener('click', findIgCols)
     return
   }
@@ -4575,7 +4575,7 @@ function renderPinRes() {
   const box = $('#imp-res')
   if (!box) return
   if (IMP.busy) { box.innerHTML = `<div class="imp-bar"><b>Looking for boards…</b></div><div class="imp-boards">${Array.from({ length: 6 }, (_, i) => `<div class="imp-board sk" style="--i:${i}"><div class="imp-cover"></div><b></b><small></small></div>`).join('')}</div>`; return }
-  if (IMP.err) { box.innerHTML = `<p class="imp-err">${esc(IMP.err)}</p>`; return }
+  if (IMP.err) { box.innerHTML = `<p class="imp-err">${esc(IMP.err)}${extLink(IMP.err)}</p>`; return }
   if (!IMP.boards) { box.innerHTML = ''; return }
   const open = IMP.boards.filter(b => !followedBoard(b))
   const chosen = IMP.boards.filter(b => IMP.sel.has(b.id) && !followedBoard(b))
@@ -4611,6 +4611,8 @@ function renderPinFoot() {
 
 // the Chrome extension says hello a moment after Dailies opens; on a phone or in another browser it never does
 async function extReady() { for (let i = 0; i < 6 && !S.ext; i++) await new Promise(r => setTimeout(r, 200)); return !!S.ext }
+// on the website, a "can't see the extension" message carries the way to get it
+const extLink = msg => window.DAILIES_WEB && !S.ext && /extension/i.test(msg || '') && !matchMedia('(max-width: 760px)').matches && !isTouch() ? ' <button class="linkbtn" type="button" data-get-ext>Get the extension</button>' : ''
 const NO_EXT = () => S.extGone ? 'The Dailies extension was just updated or reloaded, so this page lost touch with it. Reload this page, then try again.'
   : matchMedia('(max-width: 760px)').matches || isTouch()
   ? 'Importing from Pinterest, Instagram and YouTube works in Chrome on a computer, with the Dailies extension. On your phone you can still import a list of links.'
@@ -4745,6 +4747,8 @@ function helpHtml(set) {
   const keys = [['⌘Z', 'Undo'], ['⇧⌘Z', 'Redo'], ['Delete', 'Delete what’s picked on the canvas']]
   return card('M12 5v14M5 12h14', 'Save', [
       '<b>Save</b> (top bar): paste a link. <b>More</b> adds hashtags, an image or a note.',
+      window.DAILIES_WEB && !isTouch() && 'Or paste a link anywhere on this page: the Save box opens with it, picture and title included.',
+      window.DAILIES_WEB && isTouch() && 'On a phone: copy a link, open Dailies, press <b>+</b> and paste. The picture and title arrive by themselves.',
       `Chrome extension: move the pointer over a post on Instagram, X, Pinterest, YouTube, Behance or Dribbble and press its Save button; or one click saves the page you’re on.${window.DAILIES_WEB ? ' <button class="linkbtn" type="button" data-get-ext>Get the extension</button>' : ''}`,
       slack && 'Share a link to your Slack channel and it lands here.',
     ]) +
@@ -7371,13 +7375,13 @@ function renderSettings() {
   const noun = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`
   const slackSum = set.channelId ? (S.syncError ? 'Problem syncing' : set.lastSyncAt ? 'Synced ' + ago(set.lastSyncAt) : 'Not synced yet') : 'Not connected'
   body.innerHTML = window.DAILIES_DESKTOP ? macSettings(sec, waiting, noun) :
-    sec('slack', glyph('slack'), 'Slack', set.channelId ? (S.syncError ? 'bad' : '') : 'off', slackSum, `
+    (window.DAILIES_WEB && !set.channelId ? '' : sec('slack', glyph('slack'), 'Slack', set.channelId ? (S.syncError ? 'bad' : '') : 'off', slackSum, `
       ${set.channelId ? `<p class="sline">Posts in <b>#${esc(set.channelName)}</b> are saved here while Dailies is open. A short message after a link becomes its note, #words become tags, and thread replies are added.</p>` : '<p class="sline">Pick the Slack channel you share references to.</p>'}
       ${S.syncError ? `<p class="sline bad">${esc(S.syncError)}</p>` : ''}
       ${S.owner && S.mcp ? `
         <label class="swrow"><span>React ✅ on messages once they’re saved</span><input type="checkbox" class="swc" id="set-react" ${set.react !== false ? 'checked' : ''}></label>
         <div class="ss-actions"><button class="btn" id="set-sync" type="button">Sync now</button><button class="btn" id="set-channels" type="button">${set.channelId ? 'Change channel' : 'Choose channel'}</button></div>
-        <div id="channel-list"></div>` : '<p class="sline">Syncing runs when the owner opens Dailies in Claude with the Slack connector on.</p>'}`) +
+        <div id="channel-list"></div>` : '<p class="sline">Syncing runs when the owner opens Dailies in Claude with the Slack connector on.</p>'}`)) +
     sec('pin', glyph('pinterest', true), 'Pinterest', pinDot, !boards.length ? 'None followed' : pinDot === 'warn' ? 'Waiting for Chrome' : noun(boards.length, 'board'), `
       <p class="sline">New pins on these boards are added while Dailies is open in Chrome with the extension. Public boards only.</p>
       ${boards.length ? `<div class="boards">${boards.map((b, i) => row(b.label, pinSt[i], 'data-unboard', i, 'Stop following ' + esc(b.label))).join('')}</div>` : ''}
@@ -12638,6 +12642,9 @@ document.addEventListener('keydown', e => {
   const typing = e.target && e.target.closest ? e.target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])') : null
   if (e.key === 'Escape' && menuFor) { e.preventDefault(); closeMenu(); return }
   if (e.key === 'Escape' && !$('#bgpop').hidden) { e.preventDefault(); toggleBgPop(false); $('#bg-btn').focus(); return }
+  if (e.key === 'Escape' && !$('#tagmenu').hidden) { e.preventDefault(); $('#tagmenu').hidden = true; document.querySelectorAll('[data-menu][aria-expanded="true"]').forEach(b => b.setAttribute('aria-expanded', 'false')); return } // Type / Order / Export menus
+  if (e.key === 'Escape' && !$('#projmenu').hidden) { e.preventDefault(); closeProjMenu(); return }
+  if (e.key === 'Escape' && !$('#th-menu').hidden) { e.preventDefault(); $('#th-menu').hidden = true; return }
   if (e.key === 'Escape' && stack.length) { e.preventDefault(); closeTop(); return }
   if (e.key === 'Escape' && S.sel.size && !typing) { e.preventDefault(); clearSel(); return }
   // no other keys: Rohit asked for no shortcuts beyond undo, redo and delete on the canvas
