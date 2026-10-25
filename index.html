@@ -14,7 +14,10 @@
     .then(s => ({ google: !!(s.external && s.external.google), slack: !!(s.external && s.external.slack_oidc) })).catch(() => PROV)
   window.DAILIES_WEB = true
   const W = (window.DAILIES_WEB_API = { email: '' })
-  const sb = window.supabase.createClient(SUPA_URL, SUPA_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } })
+  // No cross-tab lock around sign-in state: supabase-js's Web Lock can deadlock a tab against itself (seen on 25 Oct: a tab
+  // held `lock:sb-…-auth-token` with 32 of its own requests queued behind it, and every other Dailies tab waited forever
+  // before loading the library). One person, a tab or two: a token refresh racing another tab is harmless by comparison.
+  const sb = window.supabase.createClient(SUPA_URL, SUPA_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, lock: async (_name, _timeout, fn) => await fn() } })
   const clone = v => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)))
   const err = (code, message) => Object.assign(new Error(message), { code })
   // pictures and videos are served from this site's /_blob/ address by sw.js, so canvases and exports can read them
@@ -23,11 +26,15 @@
   // ---------------------------------------------------------------- sign in
   let uid = null
   const signedIn = new Promise(resolve => {
-    const done = session => { uid = session.user.id; W.email = session.user.email || ''; hideGate(); resolve() }
+    const done = session => { uid = session.user.id; W.email = session.user.email || ''; hideGate(); setTimeout(resolve, 0) } // the library loads outside the auth callback
     sb.auth.getSession().then(({ data }) => { if (data.session) done(data.session); else showGate() })
     sb.auth.onAuthStateChange((event, session) => { if (session && !uid) done(session); if (event === 'SIGNED_OUT') location.reload() })
   })
   W.signOut = () => sb.auth.signOut()
+  // the link-preview server function (supabase/functions/preview): the page sends the signed-in user's token with it
+  W.token = async () => { const { data } = await sb.auth.getSession(); return data.session ? data.session.access_token : null }
+  W.previewUrl = SUPA_URL + '/functions/v1/preview'
+  W.apikey = SUPA_KEY
 
   async function showGate() {
     PROV = await provOn
@@ -4812,6 +4819,7 @@ function inOrder(db) {
   db.collection('refs').orderBy('savedAt', 'desc').limit(1000).onSnapshot(snap => {
     const known = S.loaded ? new Set(S.refs.map(r => r.id)) : null
     S.refs = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(r => !(S.gone && S.gone.has(r.id))) // still being deleted: never flickers back
+    webPreviewsSoon()
     if (known) setTimeout(() => newSaves(S.refs.filter(r => !known.has(r.id)), known.size), 0)
     // what arrives while you're looking joins at the bottom, one after another, so nothing on screen moves (Rohit: no abrupt shifts)
     if (known) { S.arrived ||= []; for (const r of S.refs) if (!known.has(r.id) && !S.arrived.includes(r.id)) S.arrived.push(r.id) }
@@ -6390,6 +6398,38 @@ $('#d-delete').onclick = async () => {
   closeTop()
   deleteRef(r)
 }
+// On the website without the extension, references that are still waiting for a picture (saved from a phone, or before the
+// extension was installed) get their title and picture from the server function, a few at a time, in the background
+const WEBPREV = { asked: new Set(), busy: false, timer: 0 }
+function webPreviewsSoon() { if (!(window.DAILIES_WEB && S.canWrite)) return; clearTimeout(WEBPREV.timer); WEBPREV.timer = setTimeout(webPreviews, 3000) }
+async function webPreviews() {
+  const W = window.DAILIES_WEB_API
+  if (WEBPREV.busy || S.ext || !(W && W.token && W.previewUrl) || document.hidden) return
+  const todo = S.refs.filter(r => r.preview === 'pending' && !r.image && /^https:\/\//i.test(r.url || '') && r.source !== 'instagram' && !WEBPREV.asked.has(r.id)).slice(0, 6)
+  if (!todo.length) return
+  WEBPREV.busy = true
+  try {
+    const token = await W.token(); if (!token) return
+    for (const r of todo) {
+      WEBPREV.asked.add(r.id)
+      try {
+        const res = await fetch(W.previewUrl + '?url=' + encodeURIComponent(r.url), { headers: { Authorization: 'Bearer ' + token, apikey: W.apikey || '' }, signal: AbortSignal.timeout(12000) })
+        if (!res.ok) continue
+        const d = await res.json()
+        if (!byId(r.id)) continue
+        const fields = {}
+        if (d.title && !r.title) fields.title = d.title
+        if (d.author && !r.author) fields.author = d.author
+        if (d.image) {
+          const blob = await (await fetch(d.image)).blob()
+          const img = await uploadImage(blob)
+          Object.assign(fields, { image: img.image, imageW: img.imageW, imageH: img.imageH, preview: 'done' })
+        }
+        if (Object.keys(fields).length) await patch(r.id, fields)
+      } catch { /* this one stays as it is; the extension may still fill it in */ }
+    }
+  } finally { WEBPREV.busy = false; if (S.refs.some(r => r.preview === 'pending' && !r.image && !WEBPREV.asked.has(r.id))) webPreviewsSoon() }
+}
 async function attachPicture(id, blob, done = 'Picture added') {
   const r = byId(id)
   if (!r || !S.assets) return
@@ -6533,7 +6573,7 @@ async function fetchAddPreview(link) {
   }
   try {
     const token = await W.token(); if (!token) return
-    const res = await fetch('/.netlify/functions/preview?url=' + encodeURIComponent(link), { headers: { Authorization: 'Bearer ' + token }, signal: AbortSignal.timeout(9000) })
+    const res = await fetch((W.previewUrl || '/.netlify/functions/preview') + '?url=' + encodeURIComponent(link), { headers: { Authorization: 'Bearer ' + token, apikey: W.apikey || '' }, signal: AbortSignal.timeout(9000) })
     if (!res.ok) return
     const d = await res.json()
     if ($('#add-preview').dataset.link !== link || (!d.title && !d.image)) return // pasted something else meanwhile
