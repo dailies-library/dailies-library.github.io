@@ -6163,7 +6163,12 @@ async function rememberRemoved(refs, on = true) {
 // change some settings fields without writing the rest from this tab's copy (another device may have changed them meanwhile)
 async function setSetting(fields) {
   const ref = S.db.doc('settings/main')
-  try { await ref.update(fields) } catch { await ref.set({ ...(S.settings || {}), ...fields }) } // first time: there is no settings doc yet
+  // the first time there is no settings document yet: it has to be created, not updated (the write queue quietly drops an
+  // update to a document that doesn't exist, which is right for something deleted a moment ago but not here)
+  const cur = await ref.get().catch(() => null)
+  if (cur && cur.exists) await ref.update(fields)
+  else await ref.set({ ...(S.settings || {}), ...fields })
+  S.settings = { ...(S.settings || {}), ...fields } // seen at once, before the snapshot arrives
 }
 // Deleting keeps the record for a few seconds so Undo can put it back; the picture goes after that.
 function deleteRef(r) {
