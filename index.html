@@ -6053,6 +6053,16 @@ $('#cardmenu').addEventListener('click', async e => {
 })
 document.addEventListener('mousedown', e => { if (menuFor && !e.target.closest('#cardmenu, .more')) closeMenu() })
 addEventListener('scroll', () => { if (menuFor) closeMenu() }, { passive: true })
+// popups anchored to a button (background colour, type/order menus, project and hashtag menus) close once the page really
+// scrolls, instead of floating over the grid; a few px (a phone's address bar showing or hiding) don't count
+let popScrollY = scrollY
+addEventListener('scroll', () => {
+  if (Math.abs(scrollY - popScrollY) < 8) return
+  popScrollY = scrollY
+  if (!$('#bgpop').hidden) toggleBgPop(false)
+  for (const sel of ['#tagmenu', '#seltag', '#th-menu', '#projmenu']) { const el = $(sel); if (el && !el.hidden) el.hidden = true }
+  document.querySelectorAll('.fdrop[aria-expanded="true"], [data-menu][aria-expanded="true"]').forEach(b => b.setAttribute('aria-expanded', 'false'))
+}, { passive: true })
 addEventListener('resize', () => { if (menuFor) closeMenu() })
 
 // Every delete asks first, in a small window: Cancel or Delete (Esc cancels, Enter deletes)
