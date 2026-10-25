@@ -169,7 +169,7 @@
   }
   let flushing = Promise.resolve()
   let mergeRpc = true // false once the server says merge_docs doesn't exist (then a patch is written as the whole document)
-  const requeue = (k, op) => { if (!pending.has(k)) pending.set(k, op) } // never over a newer op the person made meanwhile
+  const requeue = (k, op) => { if (pending.has(k)) return; op.tries = (op.tries || 0) + 1; if (op.tries <= 5) pending.set(k, op) } // never over a newer op; and not for ever
   function flush() {
     flushing = flushing.then(async () => {
       if (!pending.size || W.loadError) return
@@ -186,7 +186,7 @@
         for (const [k, r] of part) inflight.set(k, JSON.stringify(r.data))
         const { error } = await sb.from('docs').upsert(part.map(x => x[1]), { onConflict: 'owner,col,id' })
         for (const [k] of part) inflight.delete(k)
-        if (error) { console.warn('not saved', error); for (const [k, , op] of part) requeue(k, op); toastLater('Couldn’t save just now. Retrying…') }
+        if (error) { console.warn('not saved', error); W.lastSaveError = error.message || String(error); for (const [k, , op] of part) requeue(k, op); toastLater('Couldn’t save just now. Retrying…') }
       }
       for (let i = 0; i < patches.length; i += 200) {
         const part = patches.slice(i, i + 200)
@@ -195,7 +195,7 @@
         for (const [k] of part) inflight.delete(k)
         if (error) {
           if (/merge_docs|PGRST202|schema cache/i.test(error.message || '') || error.code === 'PGRST202') { mergeRpc = false; for (const [k, , , op] of part) requeue(k, { op: 'set' }) } // no such function yet: write whole documents
-          else { console.warn('not saved', error); for (const [k, , , op] of part) requeue(k, op); toastLater('Couldn’t save just now. Retrying…') }
+          else { console.warn('not saved', error); W.lastSaveError = error.message || String(error); for (const [k, , , op] of part) requeue(k, op); toastLater('Couldn’t save just now. Retrying…') }
         }
       }
       // deletes go as one request per collection (deleting a 100-pin board used to be 100 round trips, one after the other)
@@ -204,19 +204,27 @@
       for (const [col, items] of byCol) for (let i = 0; i < items.length; i += 200) {
         const part = items.slice(i, i + 200)
         const { error } = await sb.from('docs').delete().eq('owner', uid).eq('col', col).in('id', part.map(x => x[0]))
-        if (error) { console.warn('not deleted', error); for (const [id, op] of part) requeue(K(col, id), op) }
+        if (error) { console.warn('not deleted', error); W.lastSaveError = error.message || String(error); for (const [id, op] of part) requeue(K(col, id), op) }
       }
       if (pending.size) { clearTimeout(flushTimer); flushTimer = setTimeout(flush, 4000) }
-    }).catch(e => { console.warn('save failed', e) }) // one bad batch must never stop every later save
+    }).catch(e => { console.warn('save failed', e); W.lastSaveError = String(e && e.message || e); if (pending.size) { clearTimeout(flushTimer); flushTimer = setTimeout(flush, 4000) } }) // one bad batch must never stop every later save
     return flushing
   }
   W.flush = () => { clearTimeout(flushTimer); return flush() }
   // a tab closing mid-save: write what's pending with keepalive requests, so the browser finishes them after the page is gone
   const realFetch = window.fetch.bind(window)
   let closing = false
-  window.fetch = (input, init) => realFetch(input, closing && init && init.body && typeof init.body === 'string' && init.body.length < 60000 ? { ...init, keepalive: true } : init)
+  window.fetch = (input, init) => {
+    const url = String(input && input.url || input || '')
+    if (!url.startsWith(SUPA_URL)) return realFetch(input, init)
+    const opts = { ...(init || {}) }
+    if (closing && opts.body && typeof opts.body === 'string' && opts.body.length < 60000) opts.keepalive = true
+    if (!opts.signal) opts.signal = AbortSignal.timeout(25000) // a request that never answers must not hold up every later save
+    return realFetch(input, opts)
+  }
   addEventListener('pagehide', () => { closing = true; W.flush() })
-  addEventListener('beforeunload', e => { if (pending.size || inflight.size) { e.preventDefault(); e.returnValue = '' } })
+  // what this tab still has to write, for a quick look in the console
+  W.debug = () => ({ pending: [...pending].map(([k, op]) => k.replace('\u0000', '/') + ':' + op.op), inflight: [...inflight.keys()].map(k => k.replace('\u0000', '/')), lastSaveError: W.lastSaveError || null })
   let toastAt = 0
   function toastLater(m) { if (Date.now() - toastAt > 15000 && window.toast) { toastAt = Date.now(); window.toast(m) } }
 
