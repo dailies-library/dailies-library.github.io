@@ -798,6 +798,11 @@ body.canvas-mode #import-btn, body.projects-mode #import-btn { display: none; }
 .imp-src .chev { margin-left: auto; width: 16px; height: 16px; color: var(--faint); flex: none; transition: translate .2s, color .15s; }
 .imp-src:hover .chev { translate: 2px 0; color: var(--text); }
 .imp-skip { margin-top: 20px; text-align: center; }
+#impill { position: fixed; left: 50%; bottom: calc(22px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); z-index: 88; display: flex; align-items: center; gap: 10px; padding: 10px 14px 10px 12px; border: 0; border-radius: 999px; background: var(--text); color: var(--bg); font: 500 13.5px/1 inherit; font-family: inherit; box-shadow: 0 8px 30px rgba(0, 0, 0, .35); cursor: pointer; }
+#impill[hidden] { display: none; }
+#impill .spin { width: 13px; height: 13px; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent; animation: impspin .9s linear infinite; }
+#impill span { opacity: .6; margin-left: 2px; }
+@keyframes impspin { to { transform: rotate(360deg) } }
 .empty .linkbtn { font: inherit; color: inherit; font-weight: 600; text-decoration-color: currentColor; }
 .imp-howto { margin: 0 0 16px; padding: 0; list-style: none; display: grid; gap: 10px; counter-reset: how; }
 .imp-howto li { display: flex; gap: 12px; align-items: flex-start; padding: 12px 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); font-size: 14px; line-height: 1.5; color: var(--text); counter-increment: how; }
@@ -4312,7 +4317,7 @@ function openImport(first) {
   if (!IMP.user) { try { IMP.user = localStorage.getItem('dailies:pinuser') || '' } catch { /* no storage */ } }
   if (!IMP.user) IMP.user = (((S.settings && S.settings.pinterest) || [])[0] || {}).user || ''
   renderImport()
-  openOverlay($('#import'), () => { if (IMP.first) { try { localStorage.setItem(WELCOME_KEY, '1') } catch { /* no storage */ } } IMP.first = false })
+  openOverlay($('#import'), () => { if (IMP.first) { try { localStorage.setItem(WELCOME_KEY, '1') } catch { /* no storage */ } } IMP.first = false; if (IMP.run) impProgressSoon() })
 }
 $('#import-btn').onclick = () => openImport(false)
 function impGo(view) { IMP.view = view; IMP.err = ''; renderImport() }
@@ -4675,8 +4680,10 @@ async function importBoards() {
   const have = (S.settings && S.settings.pinterest) || []
   const add = chosen.map(b => ({ user: b.user, board: b.board, url: boardUrl(b), label: b.name, id: b.id, count: b.count || 0 }))
   try { await setSetting({ pinterest: [...have, ...add] }) } catch (e) { toast('Couldn’t follow those boards: ' + e.message); return }
-  IMP.run = { boards: add.map((b, i) => ({ ...b, pic: chosen[i].pics[0] || '', got: 0, added: null, partial: false })), pics: [], finished: false }
+  IMP.run = { boards: add.map((b, i) => ({ ...b, pic: chosen[i].pics[0] || '', got: 0, added: null, partial: false })), pics: [], finished: false, startedAt: Date.now(), heard: false }
   impGo('progress')
+  sendBoards(true) // read these boards now, whatever the extension remembers about them
+  setTimeout(impProgressSoon, 26000) // if nothing has arrived by then, the progress view says what to do
 }
 
 // every pin the extension hands over (new, or already in your library) moves its board's count on
@@ -4696,6 +4703,7 @@ function impTick(item, result) {
   if (!run || run.finished || !item || item.k !== 'pin') return
   const b = run.boards.find(x => x.label === item.board)
   if (!b) return
+  run.heard = true
   b.got++
   const r = result && result.ref && byId(result.ref)
   if (r && r.image && !run.pics.includes(r.image)) run.pics.unshift(r.image)
@@ -4704,6 +4712,7 @@ function impTick(item, result) {
 function impStatus(status) {
   const run = IMP.run
   if (!run || run.finished) return
+  if (run.boards.some(b => status[b.url])) run.heard = true
   for (const b of run.boards) {
     const st = status[b.url]
     if (!st) continue
@@ -4721,8 +4730,9 @@ function renderImpProgress() {
   if (!run) return
   const doneOf = b => b.error || (b.added != null && b.got >= b.added)
   run.finished = !!run.stopped || run.boards.every(doneOf)
-  if (!box || $('#import').hidden) return
   const got = run.boards.reduce((n, b) => n + b.got, 0)
+  renderImpPill(run, got)
+  if (!box || $('#import').hidden) return
   if (run.finished) IMP.did.pinterest = plural(run.boards.reduce((n, b) => n + b.got, 0), 'pin')
   const head = run.stopped ? 'Import stopped' : run.finished ? 'Your boards are in' : 'Bringing in your boards'
   const lead = run.stopped ? `${plural(got, 'pin')} are in your library. Boards that hadn’t finished were unfollowed. Import again whenever you like.` : run.finished ? `${plural(got, 'pin')} from ${plural(run.boards.length, 'board')} are in your library. New pins on these boards will arrive by themselves.` : 'Pins land in your library as they arrive. You can close this: it carries on while Dailies is open.'
@@ -4747,10 +4757,29 @@ function renderImpProgress() {
     return `<div class="imp-row${done && !b.error ? ' done' : ''}"><span class="mini"${b.pic ? ` style="background-image:url('${b.pic}')"` : ''}></span><div><b>${esc(b.label)}</b><div class="meter"><i style="--p:${pct}%"></i></div></div><span class="n">${n}</span></div>`
   }).join('')
   const partial = run.finished && run.boards.some(b => b.partial)
+  const stalled = !run.finished && !run.heard && Date.now() - (run.startedAt || 0) > 25000 // the extension hasn't said a word
   const note = box.querySelector('.imp-note')
-  note.hidden = !partial
-  note.textContent = 'Pinterest shows only the newest pins of a board to visitors who aren’t signed in. Sign in to pinterest.com in this browser and the rest come in on the next Refresh.'
+  note.hidden = !partial && !stalled
+  if (stalled) note.innerHTML = S.ext
+    ? 'Nothing has arrived yet. The extension may have been updated while this page was open: <button class="linkbtn" type="button" onclick="location.reload()">reload this page</button> and the import carries on.'
+    : `Nothing has arrived yet, because Dailies can’t see its Chrome extension.${extLink('extension')}`
+  else note.textContent = 'Pinterest shows only the newest pins of a board to visitors who aren’t signed in. Sign in to pinterest.com in this browser and the rest come in on the next Refresh.'
   box.querySelector('.imp-foot span').textContent = run.finished ? '' : plural(got, 'pin') + ' so far'
+}
+// a small pill at the bottom while boards are still being brought in with the Import screen closed: you can keep working
+function renderImpPill(run, got) {
+  let pill = $('#impill')
+  if (!pill) {
+    pill = document.createElement('button'); pill.id = 'impill'; pill.type = 'button'; pill.hidden = true
+    pill.onclick = () => { if (IMP.run) { openImport(false); if (!IMP.run.finished || IMP.view !== 'progress') impGo('progress') } }
+    document.body.appendChild(pill)
+  }
+  const show = run && !run.finished && $('#import').hidden
+  if (show) {
+    const total = run.boards.reduce((n, b) => n + Math.max(b.count || 0, b.got), 0)
+    pill.innerHTML = `<i class="spin"></i>Bringing in pins · ${got.toLocaleString()}${total ? ` of ${total.toLocaleString()}` : ''}<span>View</span>`
+  }
+  pill.hidden = !show
 }
 function helpHtml(set) {
   const ai = !!S.sample, slack = !!(set && set.channelId)
