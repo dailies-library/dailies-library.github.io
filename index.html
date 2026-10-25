@@ -4281,9 +4281,12 @@ $('#wl-save').onclick = () => { closeTop(); setTimeout(() => toggleQuick($('#add
 function openHelp() { $('#help-body').innerHTML = helpHtml(S.settings || {}); openOverlay($('#helpdrawer')); $('#help-body').scrollTop = 0 }
 document.addEventListener('click', e => { if (e.target.closest('[data-help-welcome]')) { closeTop(); setTimeout(openWelcome, 280) } })
 function maybeWelcome() {
-  if (FROM_CHROME || !S.canWrite || welcomed()) return
-  // a new library opens on Import: bringing in what you've already saved is the first thing to do (the tour stays in Help)
-  setTimeout(() => { if (!welcomed() && !S.refs.length && !stack.length) openImport(true) }, 1200) // a returning person's library arrives within a moment
+  if (FROM_CHROME || !S.canWrite) return
+  // an empty library opens on Import: bringing in what you've already saved is the first thing to do (the tour stays in Help).
+  // Once per browser session, whether or not this browser has seen it before (a library emptied to start again gets it too)
+  let shown = false; try { shown = !!sessionStorage.getItem('dailies:impshown') } catch { /* no storage */ }
+  if (shown) return
+  setTimeout(() => { if (!S.refs.length && !stack.length) { try { sessionStorage.setItem('dailies:impshown', '1') } catch { /* no storage */ } openImport(true) } }, 1200) // a returning person's library arrives within a moment
 }
 
 // ------------------------------------------------------------------ Import: bring references in
