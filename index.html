@@ -224,6 +224,7 @@
   }
   addEventListener('pagehide', () => { closing = true; W.flush() })
   // what this tab still has to write, for a quick look in the console
+  W.busy = () => pending.size > 0 || inflight.size > 0
   W.debug = () => ({ pending: [...pending].map(([k, op]) => k.replace('\u0000', '/') + ':' + op.op), inflight: [...inflight.keys()].map(k => k.replace('\u0000', '/')), lastSaveError: W.lastSaveError || null })
   let toastAt = 0
   function toastLater(m) { if (Date.now() - toastAt > 15000 && window.toast) { toastAt = Date.now(); window.toast(m) } }
@@ -806,6 +807,13 @@ body.canvas-mode #import-btn, body.projects-mode #import-btn { display: none; }
 .imp-src .chev { margin-left: auto; width: 16px; height: 16px; color: var(--faint); flex: none; transition: translate .2s, color .15s; }
 .imp-src:hover .chev { translate: 2px 0; color: var(--text); }
 .imp-skip { margin-top: 20px; text-align: center; }
+#busybar { position: fixed; top: 0; left: 0; right: 0; height: 2px; z-index: 300; pointer-events: none; overflow: hidden; }
+#busybar[hidden] { display: none; }
+#busybar i { position: absolute; top: 0; bottom: 0; left: -45%; width: 45%; border-radius: 2px; background: linear-gradient(90deg, transparent, var(--text) 50%, transparent); animation: busysweep 1.15s ease-in-out infinite; }
+@keyframes busysweep { to { left: 100% } }
+.imp-row .meter.wait { position: relative; }
+.imp-row .meter.wait i { position: absolute; left: -35%; width: 35%; background: linear-gradient(90deg, transparent, var(--text), transparent); animation: busysweep 1.2s ease-in-out infinite; transition: none; }
+#empty.working h2::after { content: ''; display: inline-block; width: 14px; height: 14px; margin-left: 10px; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent; vertical-align: -1px; animation: impspin .9s linear infinite; }
 #impill { position: fixed; left: 50%; bottom: calc(22px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); z-index: 88; display: flex; align-items: center; gap: 10px; padding: 10px 14px 10px 12px; border: 0; border-radius: 999px; background: var(--text); color: var(--bg); font: 500 13.5px/1 inherit; font-family: inherit; box-shadow: 0 8px 30px rgba(0, 0, 0, .35); cursor: pointer; }
 #impill[hidden] { display: none; }
 #impill .spin { width: 13px; height: 13px; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent; animation: impspin .9s linear infinite; }
@@ -2350,6 +2358,7 @@ input, textarea, select, .field { transition: border-color .18s ease, box-shadow
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; } }
 </style>
 
+<div id="busybar" hidden aria-hidden="true"><i></i></div>
 <header class="top">
   <div class="row1">
     <div class="brand">
@@ -4692,13 +4701,23 @@ async function findPinBoards(raw) {
 async function importBoards() {
   const chosen = IMP.boards.filter(b => IMP.sel.has(b.id) && !followedBoard(b))
   if (!chosen.length) return
-  const have = (S.settings && S.settings.pinterest) || []
-  const add = chosen.map(b => ({ user: b.user, board: b.board, url: boardUrl(b), label: b.name, id: b.id, count: b.count || 0 }))
-  try { await setSetting({ pinterest: [...have, ...add] }) } catch (e) { toast('Couldn’t follow those boards: ' + e.message); return }
-  IMP.run = { boards: add.map((b, i) => ({ ...b, pic: chosen[i].pics[0] || '', got: 0, added: null, partial: false })), pics: [], finished: false, startedAt: Date.now(), heard: false }
+  const add = chosen.map(b => ({ user: b.user, board: b.board, url: boardUrl(b), label: b.name, id: b.id, count: b.count || 0, pic: b.pics[0] || '' }))
+  try { await followBoards(add) } catch (e) { toast('Couldn’t follow those boards: ' + e.message); return }
   impGo('progress')
+}
+// Following boards, from Import or from Settings: they are saved in settings, the extension is asked to read them now
+// (whole, every pin), and the progress view / the pill at the bottom show them arriving
+async function followBoards(add) {
+  const have = (S.settings && S.settings.pinterest) || []
+  const fresh = add.filter(b => b && b.url && !have.some(h => h.url === b.url))
+  if (!fresh.length) return
+  await setSetting({ pinterest: [...have, ...fresh.map(({ pic, ...b }) => b)] })
+  const run = IMP.run && !IMP.run.finished ? IMP.run : (IMP.run = { boards: [], pics: [], finished: false, startedAt: Date.now(), heard: false })
+  for (const b of fresh) if (!run.boards.some(x => x.url === b.url)) run.boards.push({ ...b, pic: b.pic || '', got: 0, added: null, partial: false })
+  run.finished = false; run.stopped = false; run.startedAt = Date.now()
   sendBoards(true) // read these boards now, whatever the extension remembers about them
   setTimeout(impProgressSoon, 26000) // if nothing has arrived by then, the progress view says what to do
+  impProgressSoon()
 }
 
 // every pin the extension hands over (new, or already in your library) moves its board's count on
@@ -4769,7 +4788,7 @@ function renderImpProgress() {
     const total = Math.max(b.count || 0, b.got), done = doneOf(b)
     const pct = done ? 100 : total ? Math.min(98, Math.round(b.got / total * 100)) : 4
     const n = b.error ? esc(b.error) : done ? `${CHECK_IC.replace('<svg', '<svg width="12" height="12" style="vertical-align:-1px;margin-right:4px"')}${plural(b.got, 'pin')}` : `${b.got.toLocaleString()} of ${total.toLocaleString()}`
-    return `<div class="imp-row${done && !b.error ? ' done' : ''}"><span class="mini"${b.pic ? ` style="background-image:url('${b.pic}')"` : ''}></span><div><b>${esc(b.label)}</b><div class="meter"><i style="--p:${pct}%"></i></div></div><span class="n">${n}</span></div>`
+    return `<div class="imp-row${done && !b.error ? ' done' : ''}"><span class="mini"${b.pic ? ` style="background-image:url('${b.pic}')"` : ''}></span><div><b>${esc(b.label)}</b><div class="meter${!done && !b.got && !b.error ? ' wait' : ''}"><i style="--p:${pct}%"></i></div></div><span class="n">${n}</span></div>`
   }).join('')
   const partial = run.finished && run.boards.some(b => b.partial)
   const stalled = !run.finished && !run.heard && Date.now() - (run.startedAt || 0) > 25000 // the extension hasn't said a word
@@ -4782,6 +4801,24 @@ function renderImpProgress() {
   box.querySelector('.imp-foot span').textContent = run.finished ? '' : plural(got, 'pin') + ' so far'
 }
 // a small pill at the bottom while boards are still being brought in with the Import screen closed: you can keep working
+// what Dailies is waiting on right now; the bar along the top shows while any of it is going
+function busyWhy() {
+  const w = []
+  if (IMP.run && !IMP.run.finished) w.push('import')
+  if (S.boardStatus && Object.values(S.boardStatus).some(s => s && s.busy)) w.push('boards')
+  if (S.refreshing || S.syncing) w.push('sync')
+  if (S.askedAt && [...S.askedAt.values()].some(t => Date.now() - t < 20000)) w.push('previews')
+  if (typeof WEBPREV !== 'undefined' && WEBPREV.busy) w.push('previews')
+  const W = window.DAILIES_WEB_API; if (W && W.busy && W.busy()) w.push('saving')
+  return w
+}
+let busyWas = ''
+setInterval(() => {
+  const w = busyWhy(), bar = $('#busybar'); if (!bar) return
+  bar.hidden = !w.length
+  const key = w.join()
+  if (key !== busyWas) { busyWas = key; if (!S.refs.length && S.loaded) render() } // the empty page says what is happening
+}, 400)
 function renderImpPill(run, got) {
   let pill = $('#impill')
   if (!pill) {
@@ -5297,7 +5334,9 @@ function render() {
   if (!S.loaded) return
   if (!S.refs.length) {
     empty.hidden = false
-    empty.innerHTML = window.DAILIES_WEB ? '<h2>Nothing saved yet</h2><p>Press <b>Save</b> and paste a link, or <button class="linkbtn" type="button" data-get-ext>get the Chrome extension</button> and save from any page with one click. Have a Dailies file already? Bring it in from <b>Settings → Your data</b>.</p>'
+    const working = IMP.run && !IMP.run.finished
+    empty.classList.toggle('working', !!working)
+    empty.innerHTML = working ? `<h2>Bringing in your pins</h2><p>They appear here as they arrive, newest first. You can keep using Dailies meanwhile.</p>` : window.DAILIES_WEB ? '<h2>Nothing saved yet</h2><p>Press <b>Save</b> and paste a link, or <button class="linkbtn" type="button" data-get-ext>get the Chrome extension</button> and save from any page with one click. Have a Dailies file already? Bring it in from <b>Settings → Your data</b>.</p>'
       : window.DAILIES_DESKTOP ? '<h2>Nothing saved yet</h2><p>Press <b>Save</b> and paste a link from Instagram, YouTube, X, TikTok, Pinterest or anywhere else. Already using Dailies on claude.ai? Bring your library over from <b>Settings → Your data</b>.</p>'
       : `<h2>Nothing saved yet</h2><p>Share a link to <b>#${esc(S.settings?.channelName || 'your references channel')}</b> in Slack, or press <b>Save</b> and paste one here.</p>`
   } else if (!S.filtered.length) {
@@ -6165,7 +6204,7 @@ const isRemoved = (...ks) => ks.some(k => k && removedSet().has(k))
 async function rememberRemoved(refs, on = true) {
   if (!S.canWrite || !S.db) return
   if (on && pkReady() && S.inboxOpen) for (const r of refs) if (r.source === 'pinterest' && !r.pk && /\/pin\/\d+/.test(r.url || '')) peek(r.url).then(x => { if (x && /^[0-9a-f]{32}$/.test(x.pk || '')) rememberRemoved([{ pk: x.pk }]) }).catch(() => {}) // an older pin: ask for its picture key too
-  const add = refs.flatMap(r => [r.key, /^[sx]-/.test(r.id || '') ? r.id : null, picSig(r) ? 'sig:' + picSig(r) : null, r.pk ? 'pk:' + r.pk : null].filter(Boolean))
+  const add = refs.flatMap(r => [r.key, /^[sx]-/.test(r.id || '') ? r.id : null, picSig(r) ? 'sig:' + picSig(r) : null, r.pk ? 'pk:' + r.pk : null, r.sigKey || null].filter(Boolean))
   if (!add.length) return
   const fresh = await S.db.doc('settings/main').get().catch(() => null) // the stored list, which another device may just have added to
   const stored = fresh && fresh.exists ? (fresh.data().removed || []) : null
@@ -6190,6 +6229,7 @@ function deleteRef(r) {
   if (!r) return
   const { id, ...data } = r
   S.db.collection('refs').doc(id).delete().then(() => {
+    S.handled && S.handled.delete(id)
     rememberRemoved([r])
     const purge = setTimeout(() => { if (data.image && S.assets) S.assets.delete(data.image).catch(() => {}) }, 7000)
     toast('Deleted', { label: 'Undo', run: () => { clearTimeout(purge); rememberRemoved([r], false); (S.restored ||= new Set()).add(id); S.db.collection('refs').doc(id).set(data).then(() => toast('Restored')).catch(e => toast('Couldn’t restore: ' + e.message)) } })
@@ -6733,6 +6773,7 @@ async function saveRef({ url, note = '', tags = [], image = null, extra = null, 
   }
   if (pending) Object.assign(ref, await uploadImage(pending), { preview: url ? 'done' : 'none' })
   const id = newId('w')
+  if (S.gone) S.gone.delete(id) // deleted earlier in this visit, saved again on purpose
   await S.db.collection('refs').doc(id).set(ref)
   return { id, dup: false }
 }
@@ -7125,18 +7166,28 @@ async function receiveSave(d) {
   if (!S.settingsLoaded && (d.k === 'pin' || d.k === 'igsave')) return { state: 'later' } // settings didn't load: not now, the extension sends it again
   const id = 'x-' + String(d.id || Date.now().toString(36)).replace(/[^A-Za-z0-9_-]/g, '').slice(0, 40)
   S.handled = S.handled || new Set()
-  if (byId(id) || S.handled.has(id)) return { state: 'saved', ref: id }
+  if (byId(id)) return { state: 'saved', ref: id }
+  if (S.handled.has(id)) { // delivered earlier this visit: still there? (it may have been deleted since, and is wanted again)
+    const there = await S.db.collection('refs').doc(id).get().then(x => x.exists, () => false)
+    if (there) return { state: 'saved', ref: id }
+    S.handled.delete(id)
+  }
   if (!d.u || !/^https?:\/\//i.test(d.u)) return { state: 'error', message: 'The page had no link to save' }
   const note = String(d.n || '').trim().slice(0, 5000)
   const tags = normaliseTags(d.g || [])
   const image = d.img ? new Blob([b64bytes(d.img)], { type: 'image/jpeg' }) : null
   const clean = cleanUrl(d.u), source = sourceOf(clean)
   const pk = /^[0-9a-f]{32}$/.test(d.pk || '') ? d.pk : ''
-  if (isRemoved(id, dedupeKey(clean), pk && 'pk:' + pk)) {
+  // `again`: you chose to import this board (Import, or added it in Settings) — a copy you deleted earlier comes back on purpose.
+  // Without it, a board or collection that is merely followed never brings a deleted pin back.
+  const again = d.again === true
+  if (again) { if (isRemoved(id, dedupeKey(clean), pk && 'pk:' + pk)) await rememberRemoved([{ key: dedupeKey(clean), id, ...(pk ? { pk } : {}) }], false) }
+  else if (isRemoved(id, dedupeKey(clean), pk && 'pk:' + pk)) {
     if (d.k === 'pin' || d.k === 'igsave') return { state: 'duplicate', ref: null, removed: true } // a board or collection you follow: it stays deleted
     rememberRemoved([{ key: dedupeKey(clean), id }], false) // saved again from the page on purpose
   }
-  if (image && (d.k === 'pin' || d.k === 'igsave')) { const sg = await blobSig(image); if (sg && isRemoved('sig:' + sg)) return { state: 'duplicate', ref: null, removed: true } } // the same picture under a different link or id
+  if (image && !again && (d.k === 'pin' || d.k === 'igsave')) { const sg = await blobSig(image); if (sg && isRemoved('sig:' + sg)) return { state: 'duplicate', ref: null, removed: true } } // the same picture under a different link or id
+  if (image && again) { const sg = await blobSig(image); if (sg && isRemoved('sig:' + sg)) await rememberRemoved([{ sigKey: 'sig:' + sg }], false) }
   const dup = (d.k !== 'image' && S.refs.find(r => r.key === dedupeKey(clean))) || (image && await sameImageAs(image))
   if (dup && (d.k === 'pin' || !dup.key || dup.key !== dedupeKey(clean))) { // the same picture under another link: keep the first, add any new tags
     const more = tags.filter(t => !(dup.tags || []).includes(t))
@@ -7178,6 +7229,7 @@ async function receiveSave(d) {
   // already stored but not on screen (an old save): keep it as it is, with its tags and notes, instead of writing over it
   const old = await S.db.collection('refs').doc(id).get().catch(() => null)
   if (old && old.exists) { S.handled.add(id); return { state: 'duplicate', ref: id } }
+  if (S.gone) S.gone.delete(id) // it may have been deleted earlier in this visit: it is wanted again
   await S.db.collection('refs').doc(id).set(ref)
   S.handled.add(id)
   if (d.k === 'pin' || d.k === 'igsave') return { state: 'saved', ref: id }
@@ -7495,8 +7547,8 @@ function renderSettings() {
     if (!b) { err.hidden = false; err.textContent = 'That isn’t a Pinterest board or profile link. Open the board on pinterest.com and copy its address.'; return }
     if ((set.pinterest || []).some(x => x.url === b.url)) { err.hidden = false; err.textContent = 'You already follow that board.'; return }
     $('#board-url').value = ''; err.hidden = true // cleared first, so the list can refresh under it
-    await S.db.doc('settings/main').update({ pinterest: [...(set.pinterest || []), b] })
-    toast(`Following ${b.label}`)
+    await followBoards([{ ...b, count: 0 }])
+    toast(`Following ${b.label}. Reading it now…`)
   }
   const boardAdd = $('#board-add')
   if (boardAdd) { boardAdd.onclick = addBoard; $('#board-url').onkeydown = e => { if (e.key === 'Enter') addBoard() } }
@@ -7511,10 +7563,13 @@ function renderSettings() {
   }
   const igAdd = $('#ig-add')
   if (igAdd) { igAdd.onclick = addIg; $('#ig-url').onkeydown = e => { if (e.key === 'Enter') addIg() } }
-  body.querySelectorAll('[data-unig]').forEach(btn => btn.onclick = () =>
-    S.db.doc('settings/main').update({ instagram: (set.instagram || []).filter((_, i) => i !== +btn.dataset.unig) }))
-  body.querySelectorAll('[data-unboard]').forEach(btn => btn.onclick = () =>
-    S.db.doc('settings/main').update({ pinterest: (set.pinterest || []).filter((_, i) => i !== +btn.dataset.unboard) }))
+  body.querySelectorAll('[data-unig]').forEach(btn => btn.onclick = async () => {
+    await setSetting({ instagram: (set.instagram || []).filter((_, i) => i !== +btn.dataset.unig) }); toast('Stopped following. Its saves stay in your library.') })
+  body.querySelectorAll('[data-unboard]').forEach(btn => btn.onclick = async () => {
+    const gone = (set.pinterest || [])[+btn.dataset.unboard]
+    await setSetting({ pinterest: (set.pinterest || []).filter((_, i) => i !== +btn.dataset.unboard) })
+    if (IMP.run) { IMP.run.boards = IMP.run.boards.filter(b => !gone || b.url !== gone.url); impProgressSoon() }
+    sendBoards(true); toast('Stopped following. Its pins stay in your library.') })
   if (window.DAILIES_DESKTOP) wireMacSettings()
   if (window.DAILIES_WEB) webSettings(body, sec, noun)
   const qmark = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.2 9.2a3 3 0 1 1 4.6 2.5c-1 .6-1.8 1.2-1.8 2.3M12 17.6h.01" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/></svg>'
@@ -11673,6 +11728,7 @@ async function deleteRefsBulk(refs, tagToo) {
   render()
   rememberRemoved(refs)
   for (let i = 0; i < saved.length; i += 20) await Promise.all(saved.slice(i, i + 20).map(([id]) => S.db.collection('refs').doc(id).delete().catch(() => {})))
+  setTimeout(() => { for (const [id] of saved) { S.gone.delete(id); S.handled && S.handled.delete(id) } }, 1500) // the deletes have landed: the same id may be saved again later (a re-imported board)
   if (meta) await S.db.collection('tags').doc(tagDocId(tagToo)).delete().catch(() => {})
   // the stored files go a little later, so Undo can still bring everything back
   const purge = setTimeout(() => {
