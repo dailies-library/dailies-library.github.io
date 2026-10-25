@@ -1093,7 +1093,7 @@ textarea.field { resize: vertical; min-height: 70px; line-height: 1.5; }
 .golink .playbig:hover { transform: scale(1.06); background: rgba(10, 10, 9, .8); }
 .golink .playbig svg { width: 26px; height: 26px; fill: currentColor; margin-left: 3px; }
 .golink .gotag.on { z-index: 4; opacity: 1; transform: none; pointer-events: auto; text-decoration: none; }
-.golink.player { width: min(100cqw, calc(100cqh * 16 / 9)); aspect-ratio: 16 / 9; }
+.golink.player { width: min(100cqw, calc(100cqh * var(--ar, 1.7778))); aspect-ratio: var(--ar, 1.7778); }
 .golink.player iframe { width: 100%; height: 100%; border: 0; display: block; background: #000; }
 .golink video { display: block; max-width: 100cqw; max-height: 100cqh; background: #000; }
 .golink .poster { width: min(320px, 70cqw); }
@@ -3133,7 +3133,10 @@ const VIDEO_PREVIEWS = true
 const VIDEO_KEEP = 5e6
 // does this reference still need its preview frames? (not when it has the video or frames; frames marked "none" while
 // previews were switched off, before v187, are asked for once more when it's a video)
-const needFrames = r => VIDEO_PREVIEWS && !!r && !r.video && !r.gif && !(r.scrub && (r.scrub.id || r.scrub.v === 2 || !isVideo(r)))
+const needFrames = r => VIDEO_PREVIEWS && !!r && !r.video && !r.gif && (lowFrames(r) || !(r.scrub && (r.scrub.id || r.scrub.v === 2 || !isVideo(r))))
+// frames made before 25 Oct were 240 px tall (blurry): those are made again at 720p. YouTube's come from YouTube's own small previews, so they stay
+const wideShort = r => r.source === 'youtube' && /\/shorts\//.test(r.url || '') && !!r.image && r.imageW > r.imageH // a Short with the old wide thumbnail
+const lowFrames = r => !!(r.scrub && r.scrub.id && r.scrub.h === 240 && r.source !== 'youtube')
 const TAB = Math.random().toString(36).slice(2)
 const S = {
   db: null, mcp: null, assets: null, downloads: null, owner: false, canWrite: false,
@@ -5453,7 +5456,16 @@ skeleton()
 let lastW = innerWidth
 addEventListener('resize', () => { if (innerWidth !== lastW) { lastW = innerWidth; clearTimeout(layout.t); layout.t = setTimeout(layout, 150) } })
 
+// a video's own shape when we know it (vertical, square, wide), so it plays uncropped; else the picture's
+const vidRatio = r => {
+  const w = r.videoW || r.vw, h = r.videoH || r.vh // stored as videoW / videoH
+  if (w && h && (r.video || r.scrub || r.media === 'video' || r.media === 'gif')) return h / w
+  if (r.scrub && r.scrub.w && r.scrub.h) return r.scrub.h / r.scrub.w
+  return 0
+}
 function ratio(r) {
+  const v = vidRatio(r)
+  if (v) return Math.min(1.78, Math.max(0.5, v))
   if (r.imageW && r.imageH) return Math.min(1.78, Math.max(0.5, r.imageH / r.imageW))
   if (r.kind === 'reel' || r.kind === 'short') return 1.5
   if (r.kind === 'video') return 0.5625
@@ -5768,6 +5780,8 @@ function startFlip(box, r) {
   pic.after(cv, bar)
   const timer = setInterval(tick, 125)
 }
+const HOVER_WAIT = 2000 // ms resting on a card before its preview plays
+let HOVER_X = null
 $('#grid').addEventListener('pointerover', e => {
   const c = e.target.closest('.card')
   if (c === hovered) return
@@ -5778,9 +5792,11 @@ $('#grid').addEventListener('pointerover', e => {
   hovered = c
   const frame = c.querySelector('.frame')
   if (!frame) return
-  if (!motion) { unhover = startSlides(frame, r); frame.dispatchEvent(new PointerEvent('pointermove', { clientX: e.clientX })); return }
-  if (!r.video && !r.gif) { unhover = startScrub(frame, r); frame.dispatchEvent(new PointerEvent('pointermove', { clientX: e.clientX })); return }
-  hoverT = setTimeout(() => { // a short wait so sweeping the mouse across the grid doesn't load every video
+  // previews start only after you rest on a card for a moment (Rohit: 2–3 s), never while the pointer is just passing over
+  const lastX = () => HOVER_X ?? e.clientX
+  if (!motion) { hoverT = setTimeout(() => { if (hovered !== c) return; unhover = startSlides(frame, r); frame.dispatchEvent(new PointerEvent('pointermove', { clientX: lastX() })) }, HOVER_WAIT); return }
+  if (!r.video && !r.gif) { hoverT = setTimeout(() => { if (hovered !== c) return; unhover = startScrub(frame, r); frame.dispatchEvent(new PointerEvent('pointermove', { clientX: lastX() })) }, HOVER_WAIT); return }
+  hoverT = setTimeout(() => {
     const pic = frame.querySelector(':scope > img')
     if (!pic || hovered !== c) return
     if (!r.video) { // a GIF kept as it came
@@ -5808,8 +5824,9 @@ $('#grid').addEventListener('pointerover', e => {
     }
     frame.addEventListener('pointermove', scrub)
     unhover = () => { clearTimeout(rest); frame.removeEventListener('pointermove', scrub); v.pause(); v.remove(); bar.remove() }
-  }, 140)
+  }, HOVER_WAIT)
 })
+$('#grid').addEventListener('pointermove', e => { HOVER_X = e.clientX }, { passive: true })
 $('#grid').addEventListener('pointerleave', stopHover)
 $('#grid').addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.classList.contains('card')) openDetail(e.target.dataset.id) })
 
@@ -6033,7 +6050,8 @@ function fillDetail(r) {
   const where = info(r.source).label === 'Web' ? r.domain || 'the web' : info(r.source).label
   // GIFs just loop in the big view, silently and without controls
   const anim = VIDEO_PREVIEWS && r.media === 'gif' && (r.video ? `<video src="${esc(imgSrc(r.video))}" muted autoplay loop playsinline></video>` : r.gif ? `<img alt="" src="${esc(imgSrc(r.gif))}">` : '')
-  const pic = anim ? anim : r.image ? `<img alt="" src="${esc(imgSrc(r.image))}">` : `<div class="poster">${glyph(r.source)}<span class="code mono">${esc(r.url ? shortCode(r.url) : '')}</span></div>`
+  const vr = vidRatio(r), shape = vr ? ` style="aspect-ratio:${(1 / vr).toFixed(4)};object-fit:cover"` : '' // a video keeps its own shape here
+  const pic = anim ? anim : r.image ? `<img alt="" src="${esc(imgSrc(r.image))}"${shape}>` : `<div class="poster">${glyph(r.source)}<span class="code mono">${esc(r.url ? shortCode(r.url) : '')}</span></div>`
   // Claude pages can't embed other sites' players, so the picture itself opens the original
   if (r.kind === 'note') stage.innerHTML = `<div class="notecard">${esc(r.note)}</div>`
   else if (VIDEO_PREVIEWS && r.video && r.media !== 'gif') {
@@ -6054,7 +6072,8 @@ function fillDetail(r) {
   else if (r.url && embedOf(r) && !NO_EMBED) { // YouTube plays right here in its own player (nothing is downloaded); hovering still scrubs its frames
     stage.innerHTML = `<div class="golink embed">${pic}${typePill(r)}<button type="button" class="playbig" aria-label="Play here"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l11-6.5z"/></svg></button><a class="gotag on" href="${esc(r.url)}" target="_blank" rel="noopener noreferrer">Watch on ${esc(where)} ↗</a></div>`
     stage.dataset.rid = r.id
-    stage.querySelector('.playbig').onclick = () => { stage.querySelector('.golink').outerHTML = `<div class="golink playing player"><iframe src="${esc(embedOf(r))}" allow="autoplay; fullscreen; picture-in-picture; encrypted-media" allowfullscreen referrerpolicy="strict-origin-when-cross-origin" title="Video"></iframe></div>` }
+    const ar = /\/shorts\//.test(r.url) ? 9 / 16 : vr ? 1 / vr : 16 / 9 // width ÷ height: a Short is vertical
+    stage.querySelector('.playbig').onclick = () => { stage.querySelector('.golink').outerHTML = `<div class="golink playing player" style="--ar:${ar.toFixed(4)}"><iframe src="${esc(embedOf(r))}" allow="autoplay; fullscreen; picture-in-picture; encrypted-media" allowfullscreen referrerpolicy="strict-origin-when-cross-origin" title="Video"></iframe></div>` }
   }
   else if (r.url) stage.innerHTML = `<a class="golink" href="${esc(r.url)}" target="_blank" rel="noopener noreferrer" aria-label="${video ? 'Watch' : 'Open'} on ${esc(where)}">${pic}${typePill(r)}<span class="gotag">${video ? 'Watch' : 'Open'} on ${esc(where)} ↗</span></a>`
   else if (VIDEO_PREVIEWS && scrubbable(r)) stage.innerHTML = `<div class="golink still">${pic}${typePill(r)}</div>` // your own video, kept as frames: they play here
@@ -6682,10 +6701,10 @@ function requestPreviews() {
   if (!S.inboxOpen || !S.canWrite) return
   measureScreen()
   S.asked = S.asked || new Set()
-  const items = S.refs.filter(r => r.url && !S.asked.has(r.id) && ((r.preview === 'pending' && !r.image && (window.DAILIES_DESKTOP || PREVIEWABLE.includes(r.source) || (siteReady() && !['note', 'upload'].includes(r.source)))) || ((r.source === 'pinterest' || r.source === 'twitter') && (!r.media || (VIDEO_PREVIEWS && r.media !== 'image' && !r.video && !r.gif && needFrames(r)))) || (slidesReady() && (r.source === 'pinterest' || r.source === 'twitter') && !r.sl && r.kind !== 'note') || (pkReady() && r.source === 'pinterest' && !r.pk && /\/pin\/\d+/.test(r.url || '')) || (r.source === 'youtube' && needFrames(r)) || (r.source === 'instagram' && needFrames(r) && !!r.image) || (r.via === 'instagram' && r.image && !r.caption && !r.title) || (VIDEO_PREVIEWS && window.DAILIES_DESKTOP && r.vidWant && !r.video)))
+  const items = S.refs.filter(r => r.url && !S.asked.has(r.id) && ((r.preview === 'pending' && !r.image && (window.DAILIES_DESKTOP || PREVIEWABLE.includes(r.source) || (siteReady() && !['note', 'upload'].includes(r.source)))) || ((r.source === 'pinterest' || r.source === 'twitter') && (!r.media || (VIDEO_PREVIEWS && r.media !== 'image' && !r.video && !r.gif && needFrames(r)))) || (slidesReady() && (r.source === 'pinterest' || r.source === 'twitter') && !r.sl && r.kind !== 'note') || (pkReady() && r.source === 'pinterest' && !r.pk && /\/pin\/\d+/.test(r.url || '')) || (r.source === 'youtube' && (needFrames(r) || wideShort(r))) || (r.source === 'instagram' && needFrames(r) && !!r.image) || (r.via === 'instagram' && r.image && !r.caption && !r.title) || (VIDEO_PREVIEWS && window.DAILIES_DESKTOP && r.vidWant && !r.video)))
     // what you can see first, then the cards just below, then the rest: previews seem to be there already as you scroll
     .map((r, i) => [r, onScreenRank(r.id, i)]).sort((a, b) => a[1] - b[1]).map(x => x[0])
-    .slice(0, 25).map(r => ({ id: r.id, url: r.url, source: r.source, has: !!r.image, frames: r.source === 'instagram' && needFrames(r) })) // reels: the extension makes a sheet of frames to scrub through
+    .slice(0, 25).map(r => ({ id: r.id, url: r.url, source: r.source, has: !!r.image && !wideShort(r), frames: r.source === 'instagram' && needFrames(r) })) // reels: the extension makes a sheet of frames to scrub through
   if (!items.length) return
   S.askedAt = S.askedAt || new Map()
   items.forEach(i => { S.asked.add(i.id); S.askedAt.set(i.id, Date.now()) })
@@ -6769,10 +6788,11 @@ async function applyPreview(res) {
   const needMedia = !r.media || (r.media !== 'image' && !r.video && !r.gif)
   const extra = { ...(needMedia ? await mediaFields(res) : {}), ...(needFrames(r) ? await scrubFields(res) : {}), ...(r.sl ? {} : await moreFields(res)) }
   // a video or GIF that came back with neither the file nor frames (too big to read): don't ask about it again
-  if (VIDEO_PREVIEWS && ['video', 'gif'].includes(res.media) && !extra.video && !extra.gif && !extra.scrub && !r.video && !r.gif && needFrames(r)) extra.scrub = { n: 0, v: 2 }
+  if (VIDEO_PREVIEWS && ['video', 'gif'].includes(res.media) && !extra.video && !extra.gif && !extra.scrub && !r.video && !r.gif && needFrames(r) && !(r.scrub && r.scrub.id)) extra.scrub = { n: 0, v: 2 } // (an older, blurrier sheet is kept rather than lost)
   if (extra.media === r.media && !extra.video && !extra.gif) delete extra.media // nothing new: don't rewrite it every visit
   if (r.vidWant) extra.vidWant = false // the Mac app answered, with a video or without one
   if (res.pk && !r.pk && /^[0-9a-f]{32}$/.test(res.pk)) extra.pk = res.pk // a pin's picture key, so a deleted pin is recognised under any id
+  if (r.image && res.vthumb && res.img && S.assets && r.imageW > r.imageH) Object.assign(extra, await uploadImage(new Blob([b64bytes(res.img)], { type: 'image/jpeg' }))) // a Short: its vertical picture replaces the wide one with bars
   if (r.image) { // a picture already: keep it, fill in any words that are missing (an Instagram collection import)
     if (res.t && !r.title) extra.title = String(res.t).slice(0, 300)
     if (res.a && !r.author) extra.author = String(res.a).slice(0, 200)
