@@ -118,56 +118,98 @@
   const store = {} // collection path -> { docId: data }
   const subs = new Map()
   const queued = new Set()
-  const pending = new Map() // "col\u0000id" -> 'set' | 'delete', not yet written
+  // what still has to be written: key -> { op: 'set' } | { op: 'delete' } | { op: 'patch', patch }
+  // ('patch' is a partial update, merged on the server by merge_docs so another tab's fields are never overwritten)
+  const pending = new Map()
+  const inflight = new Map() // key -> JSON of the data in the request that is on its way (its own echo is ignored)
   const K = (col, id) => col + '\u0000' + id
-  async function loadAll() {
+  async function fetchAll() {
+    const out = {}
     for (let from = 0; ; from += 1000) {
-      const { data, error } = await sb.from('docs').select('col,id,data').range(from, from + 999)
+      const { data, error } = await sb.from('docs').select('col,id,data').order('col').order('id').range(from, from + 999) // a fixed order, so paging can't skip a row
       if (error) throw error
-      for (const r of data) (store[r.col] ||= {})[r.id] = r.data
+      for (const r of data) (out[r.col] ||= {})[r.id] = r.data
       if (data.length < 1000) break
     }
+    return out
+  }
+  async function loadAll() {
+    const all = await fetchAll()
+    for (const col of Object.keys(all)) store[col] = all[col]
+    for (const [col, id, row] of early) applyRow(col, id, row) // changes that arrived while the library was loading
+    early.length = 0
+    loaded = true
   }
   // pictures live at /_blob/, which only the service worker answers (GitHub Pages has no redirects): on a first visit the
   // library waits for it to take over the page (a moment; at most 4 s), so no picture shows up broken
   const swReady = () => !('serviceWorker' in navigator) || navigator.serviceWorker.controller ? null
     : new Promise(r => { navigator.serviceWorker.addEventListener('controllerchange', r, { once: true }); setTimeout(r, 4000) })
-  const ready = signedIn.then(swReady).then(loadAll).then(listenLive).catch(e => { console.error('library not loaded', e); W.loadError = e })
+  // a picture that was asked for before the service worker took over gets asked for again once it has
+  if ('serviceWorker' in navigator && !navigator.serviceWorker.controller) navigator.serviceWorker.addEventListener('controllerchange', () => {
+    setTimeout(() => { for (const img of document.querySelectorAll('img[src^="/_blob/"]')) if (img.complete && !img.naturalWidth) { const src = img.src; img.src = ''; img.src = src } }, 50)
+  }, { once: true })
+  let loaded = false
+  const early = []
+  const ready = signedIn.then(() => { listenLive(); return swReady() }).then(loadAll).catch(e => { console.error('library not loaded', e); W.loadError = e })
   let flushTimer = 0
   function save(col, id, op) {
-    pending.set(K(col, id), op)
+    const k = K(col, id), cur = pending.get(k)
+    if (op.op === 'patch' && cur && cur.op === 'set') { /* the full write already carries it */ }
+    else if (op.op === 'patch' && cur && cur.op === 'patch') cur.patch = { ...cur.patch, ...op.patch }
+    else pending.set(k, op)
     clearTimeout(flushTimer)
     flushTimer = setTimeout(flush, 250)
   }
   let flushing = Promise.resolve()
+  let mergeRpc = true // false once the server says merge_docs doesn't exist (then a patch is written as the whole document)
+  const requeue = (k, op) => { if (!pending.has(k)) pending.set(k, op) } // never over a newer op the person made meanwhile
   function flush() {
     flushing = flushing.then(async () => {
-      if (!pending.size) return
+      if (!pending.size || W.loadError) return
       const batch = [...pending]; pending.clear()
-      const rows = [], dels = []
+      const rows = [], dels = [], patches = []
       for (const [k, op] of batch) {
         const [col, id] = k.split('\u0000')
-        if (op === 'delete') dels.push([col, id])
-        else if (store[col] && store[col][id] !== undefined) rows.push({ owner: uid, col, id, data: store[col][id], updated_at: new Date().toISOString() })
+        if (op.op === 'delete') dels.push([col, id, op])
+        else if (op.op === 'patch' && mergeRpc) patches.push([k, col, id, op])
+        else if (store[col] && store[col][id] !== undefined) rows.push([k, { owner: uid, col, id, data: store[col][id], updated_at: new Date().toISOString() }, op])
       }
       for (let i = 0; i < rows.length; i += 200) {
-        const { error } = await sb.from('docs').upsert(rows.slice(i, i + 200), { onConflict: 'owner,col,id' })
-        if (error) { console.warn('not saved', error); for (const r of rows.slice(i, i + 200)) pending.set(K(r.col, r.id), 'set'); toastLater('Couldn’t save just now. Retrying…') }
+        const part = rows.slice(i, i + 200)
+        for (const [k, r] of part) inflight.set(k, JSON.stringify(r.data))
+        const { error } = await sb.from('docs').upsert(part.map(x => x[1]), { onConflict: 'owner,col,id' })
+        for (const [k] of part) inflight.delete(k)
+        if (error) { console.warn('not saved', error); for (const [k, , op] of part) requeue(k, op); toastLater('Couldn’t save just now. Retrying…') }
+      }
+      for (let i = 0; i < patches.length; i += 200) {
+        const part = patches.slice(i, i + 200)
+        for (const [k, col, id] of part) if (store[col] && store[col][id] !== undefined) inflight.set(k, JSON.stringify(store[col][id]))
+        const { error } = await sb.rpc('merge_docs', { p_items: part.map(([, col, id, op]) => ({ col, id, patch: op.patch })) })
+        for (const [k] of part) inflight.delete(k)
+        if (error) {
+          if (/merge_docs|PGRST202|schema cache/i.test(error.message || '') || error.code === 'PGRST202') { mergeRpc = false; for (const [k, , , op] of part) requeue(k, { op: 'set' }) } // no such function yet: write whole documents
+          else { console.warn('not saved', error); for (const [k, , , op] of part) requeue(k, op); toastLater('Couldn’t save just now. Retrying…') }
+        }
       }
       // deletes go as one request per collection (deleting a 100-pin board used to be 100 round trips, one after the other)
       const byCol = new Map()
-      for (const [col, id] of dels) (byCol.get(col) || byCol.set(col, []).get(col)).push(id)
-      for (const [col, ids] of byCol) for (let i = 0; i < ids.length; i += 200) {
-        const part = ids.slice(i, i + 200)
-        const { error } = await sb.from('docs').delete().eq('owner', uid).eq('col', col).in('id', part)
-        if (error) { console.warn('not deleted', error); for (const id of part) pending.set(K(col, id), 'delete') }
+      for (const [col, id, op] of dels) (byCol.get(col) || byCol.set(col, []).get(col)).push([id, op])
+      for (const [col, items] of byCol) for (let i = 0; i < items.length; i += 200) {
+        const part = items.slice(i, i + 200)
+        const { error } = await sb.from('docs').delete().eq('owner', uid).eq('col', col).in('id', part.map(x => x[0]))
+        if (error) { console.warn('not deleted', error); for (const [id, op] of part) requeue(K(col, id), op) }
       }
       if (pending.size) { clearTimeout(flushTimer); flushTimer = setTimeout(flush, 4000) }
-    })
+    }).catch(e => { console.warn('save failed', e) }) // one bad batch must never stop every later save
     return flushing
   }
   W.flush = () => { clearTimeout(flushTimer); return flush() }
-  addEventListener('pagehide', () => W.flush())
+  // a tab closing mid-save: write what's pending with keepalive requests, so the browser finishes them after the page is gone
+  const realFetch = window.fetch.bind(window)
+  let closing = false
+  window.fetch = (input, init) => realFetch(input, closing && init && init.body && typeof init.body === 'string' && init.body.length < 60000 ? { ...init, keepalive: true } : init)
+  addEventListener('pagehide', () => { closing = true; W.flush() })
+  addEventListener('beforeunload', e => { if (pending.size || inflight.size) { e.preventDefault(); e.returnValue = '' } })
   let toastAt = 0
   function toastLater(m) { if (Date.now() - toastAt > 15000 && window.toast) { toastAt = Date.now(); window.toast(m) } }
 
@@ -183,19 +225,36 @@
     setTimeout(f, 0)
     return () => subs.get(col).delete(f)
   }
-  // other tabs and devices (and the extension's saves made in another tab) show up without a refresh
+  // a row from the live channel (or a change that arrived while loading): applied unless this tab is mid-write on it
+  function applyRow(col, id, row) {
+    const k = K(col, id)
+    if (pending.has(k)) return
+    if (row === null) { if (store[col] && id in store[col]) { delete store[col][id]; notify(col) } return }
+    const cur = store[col] && store[col][id], json = JSON.stringify(row)
+    if (inflight.get(k) === json || JSON.stringify(cur) === json) return
+    ;(store[col] ||= {})[id] = row
+    notify(col)
+  }
+  // other tabs and devices (and the extension's saves made in another tab) show up without a refresh; the channel is
+  // opened before the first load so nothing falls between the two, and reopened if it drops
+  let liveTries = 0
   function listenLive() {
-    sb.channel('docs-' + uid)
+    const ch = sb.channel('docs-' + uid + '-' + Date.now())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'docs', filter: 'owner=eq.' + uid }, p => {
         const row = p.eventType === 'DELETE' ? p.old : p.new
-        if (!row || !row.col || (row.owner && row.owner !== uid) || pending.has(K(row.col, row.id))) return
-        if (p.eventType === 'DELETE') { if (store[row.col] && row.id in store[row.col]) { delete store[row.col][row.id]; notify(row.col) } return }
-        const cur = store[row.col] && store[row.col][row.id]
-        if (JSON.stringify(cur) === JSON.stringify(row.data)) return
-        ;(store[row.col] ||= {})[row.id] = row.data
-        notify(row.col)
+        if (!row || !row.col || (row.owner && row.owner !== uid)) return
+        const val = p.eventType === 'DELETE' ? null : row.data
+        if (!loaded) early.push([row.col, row.id, val]); else applyRow(row.col, row.id, val)
       })
-      .subscribe()
+      .subscribe(async status => {
+        if (status === 'SUBSCRIBED') {
+          if (liveTries > 0 && loaded) { try { await W.reload() } catch { /* next time */ } } // after a drop: catch up on what was missed
+          liveTries++
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+          sb.removeChannel(ch).catch(() => {})
+          setTimeout(listenLive, Math.min(30000, 2000 * Math.max(1, liveTries)))
+        }
+      })
   }
   const split = path => { const p = String(path).split('/'); return [p.slice(0, -1).join('/'), p[p.length - 1]] }
   const docSnap = (col, id) => { const d = (store[col] || {})[id]; return { id, exists: d !== undefined, data: () => clone(d) } }
@@ -203,10 +262,10 @@
     return {
       id,
       get: async () => (await ready, docSnap(col, id)),
-      set: async data => { await ready; (store[col] ||= {})[id] = clone(data); changed(col, id, 'set') },
-      update: async data => { await ready; const c = (store[col] ||= {}); c[id] = { ...(c[id] || {}), ...clone(data) }; changed(col, id, 'set') },
-      delete: async () => { await ready; if (store[col]) delete store[col][id]; changed(col, id, 'delete') },
-      onSnapshot(cb, onErr) { let off = () => {}; ready.then(() => { off = listen(col, () => { try { cb(docSnap(col, id)) } catch (e) { onErr && onErr(e) } }) }); return () => off() },
+      set: async data => { await ready; if (W.loadError) throw err('unavailable', 'Your library didn’t load, so nothing can be saved. Reload the page.'); (store[col] ||= {})[id] = clone(data); changed(col, id, { op: 'set' }) },
+      update: async data => { await ready; const c = (store[col] ||= {}); if (c[id] === undefined) throw err('invalid_argument', 'That was deleted a moment ago'); const patch = clone(data); c[id] = { ...c[id], ...patch }; changed(col, id, { op: 'patch', patch }) },
+      delete: async () => { await ready; if (store[col]) delete store[col][id]; changed(col, id, { op: 'delete' }) },
+      onSnapshot(cb, onErr) { let off = () => {}; ready.then(() => { if (W.loadError) { onErr && onErr(W.loadError); return } off = listen(col, () => { try { cb(docSnap(col, id)) } catch (e) { onErr && onErr(e) } }) }); return () => off() },
       acquire: async () => ({ acquired: true, release: async () => {} }),
       release: async () => {},
     }
@@ -303,16 +362,13 @@
   W.reload = async () => {
     await ready; await W.flush()
     const before = Object.keys(store.refs || {}).length
-    const fresh = {}
-    for (let from = 0; ; from += 1000) {
-      const { data, error } = await sb.from('docs').select('col,id,data').range(from, from + 999)
-      if (error) throw error
-      for (const r of data) (fresh[r.col] ||= {})[r.id] = r.data
-      if (data.length < 1000) break
-    }
+    const fresh = await fetchAll()
     for (const col of new Set([...Object.keys(store), ...Object.keys(fresh)])) {
-      if (JSON.stringify(store[col] || {}) === JSON.stringify(fresh[col] || {})) continue
-      store[col] = fresh[col] || {}
+      const next = fresh[col] || {}
+      for (const id of Object.keys(store[col] || {})) if (pending.has(K(col, id)) || inflight.has(K(col, id))) next[id] = store[col][id] // still being written from here
+      for (const [k] of pending) { const [c, id] = k.split('\u0000'); if (c === col && store[col] && store[col][id] !== undefined) next[id] = store[col][id] }
+      if (JSON.stringify(store[col] || {}) === JSON.stringify(next)) continue
+      store[col] = next
       notify(col)
     }
     return Object.keys(store.refs || {}).length - before
@@ -366,7 +422,7 @@
       for (const [id, data] of Object.entries(docs)) {
         if (col === 'refs') refs++
         ;(store[col] ||= {})[id] = data
-        save(col, id, 'set')
+        save(col, id, { op: 'set' })
       }
       notify(col)
     }
@@ -4228,7 +4284,7 @@ const plural = (n, w) => `${n.toLocaleString()} ${w}${n === 1 ? '' : 's'}`
 const impArt = (keys, still) => `<div class="imp-art${still ? ' still' : ''}" aria-hidden="true"><span class="lgs">${keys.map((k, i) => `<span class="lg" style="--i:${i}">${glyph(k, true)}</span>`).join('')}</span><span class="dots">${[0, 1, 2].map(i => `<i style="--i:${i}"></i>`).join('')}</span><span class="lg" style="--i:${keys.length + 1}"><img alt="" src="${$('.brand .mark').src}"></span></div>`
 
 const EXT_IC = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 3.5a2 2 0 0 1 4 0V5h3a1 1 0 0 1 1 1v3h1.5a2 2 0 0 1 0 4H18v4a1 1 0 0 1-1 1h-3v-1.5a2 2 0 0 0-4 0V18H7a1 1 0 0 1-1-1v-3H4.5a2 2 0 0 1 0-4H6V6a1 1 0 0 1 1-1h3z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>'
-document.addEventListener('click', e => { const b = e.target.closest('[data-get-ext]'); if (!b) return; e.preventDefault(); closeTransient && closeTransient(); if ($('#import').hidden) openImport(false); impGo('extension') })
+document.addEventListener('click', e => { const b = e.target && e.target.closest ? e.target.closest('[data-get-ext]') : null; if (!b) return; e.preventDefault(); closeTransient && closeTransient(); if ($('#import').hidden) openImport(false); impGo('extension') })
 function openImport(first) {
   if (!S.canWrite) return
   IMP.first = !!first
@@ -12529,7 +12585,7 @@ $('#d-proj').addEventListener('click', e => {
 $('#settings-btn').onclick = () => openSettings()
 document.addEventListener('keydown', e => {
   if (canvasKey(e)) return
-  const typing = e.target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])')
+  const typing = e.target && e.target.closest ? e.target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])') : null
   if (e.key === 'Escape' && menuFor) { e.preventDefault(); closeMenu(); return }
   if (e.key === 'Escape' && !$('#bgpop').hidden) { e.preventDefault(); toggleBgPop(false); $('#bg-btn').focus(); return }
   if (e.key === 'Escape' && stack.length) { e.preventDefault(); closeTop(); return }
