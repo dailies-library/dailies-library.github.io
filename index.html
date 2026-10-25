@@ -3486,7 +3486,7 @@ async function brainTextPass() {
   brainStatus()
   try {
     for (; list.length; list = todo()) {
-      await brainWaitVisible()
+      await brainPause()
       const r = list[0]
       try {
         const parts = []
@@ -3588,6 +3588,26 @@ async function brainFrames(r) {
   return out
 }
 const brainWaitVisible = () => document.hidden ? new Promise(r => document.addEventListener('visibilitychange', function f() { if (!document.hidden) { document.removeEventListener('visibilitychange', f); r() } })) : null
+// Reading the library is background work: it only runs while the tab is visible AND the person has left the page alone for a
+// few seconds, so it never competes with scrolling, hovering or typing (the first visit used to pull every picture and video at once)
+let brainLastActive = performance.now()
+for (const ev of ['pointermove', 'pointerdown', 'keydown', 'wheel', 'touchstart', 'scroll']) addEventListener(ev, () => { brainLastActive = performance.now() }, { passive: true, capture: true })
+const BRAIN_IDLE_MS = 4000
+async function brainPause() {
+  for (;;) {
+    await brainWaitVisible()
+    const quiet = performance.now() - brainLastActive
+    if (quiet >= BRAIN_IDLE_MS && navigator.onLine !== false) return
+    await new Promise(r => setTimeout(r, Math.max(300, BRAIN_IDLE_MS - quiet)))
+  }
+}
+// no automatic reading on a metered or slow connection, or on a laptop that is unplugged and getting low
+async function brainCheap() {
+  const c = navigator.connection
+  if (c && (c.saveData || /2g|3g/.test(c.effectiveType || ''))) return false
+  try { const b = navigator.getBattery && await navigator.getBattery(); if (b && !b.charging && b.level < .3) return false } catch { /* no battery api */ }
+  return true
+}
 const brainTodo = () => S.refs.filter(r => r.kind !== 'note' && (r.image || r.video) && !BR.vecs.has(r.id) && !BR.failed.has(r.id))
 async function brainIndex() {
   if (BR.indexing || !S.canWrite || brainPhone() || !await brainAvailable()) return
@@ -3599,7 +3619,7 @@ async function brainIndex() {
       if (!todo.length || BR.on === false) break
       BR.total = BR.done + todo.length
       brainStatus()
-      await brainWaitVisible()
+      await brainPause()
       const r = todo[0]
       try {
         const frames = await brainFrames(r)
@@ -3676,7 +3696,8 @@ function brainSoon() {
   if (BR.on === null && (BR.started || S.refs.length < BRAIN.minLib)) return
   if (BR.on && !brainTodo().length && !S.refs.some(r => BR.docs.has(r.id) && ((BRAIN_OCR && ocrTodo(r)) || (r.video && (!BR.facts.has(r.id) || !BR.vc.has(r.id)) && !BR.failed.has('w' + r.id))))) return
   clearTimeout(brainSoonTimer)
-  brainSoonTimer = setTimeout(() => { BR.started = true; brainIndex() }, BR.on ? 3000 : 8000)
+  const firstVisit = !BR.docs.size // nothing read yet: give the person their first minute with the library before any background work
+  brainSoonTimer = setTimeout(async () => { if (!await brainCheap()) return; BR.started = true; brainIndex() }, firstVisit ? 60000 : BR.on ? 3000 : 8000)
 }
 
 // ---- search by meaning as you type: keyword matches stay first, then what the model finds, best first
@@ -3788,7 +3809,7 @@ async function brainSentPass() {
   brainStatus()
   try {
     for (let i = 0; i < todo.length; i += 16) {
-      await brainWaitVisible()
+      await brainPause()
       const batch = todo.slice(i, i + 16)
       const flat = await brainCall({ op: 'sent', texts: batch.map(x => x[1]) })
       const dim = flat.length / batch.length
@@ -3925,7 +3946,7 @@ async function brainWatchPass() {
   brainStatus()
   try {
     for (; list.length; list = todo()) {
-      await brainWaitVisible()
+      await brainPause()
       const r = list[0]
       const seen = await brainWatch(r.video)
       if (!seen) { BR.failed.add('w' + r.id); BR.done++; continue }
@@ -5533,6 +5554,17 @@ const PICK = `<button class="pick" type="button" data-pick aria-label="Select"><
 const MORE = `<button class="more" type="button" data-more aria-label="More actions" aria-haspopup="menu"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg></button>`
 // hover a card and a small arrow takes you straight to where it came from (clicking the card itself opens it here)
 const srcBtn = r => r.url && /^https?:\/\//i.test(r.url) ? `<a class="src" data-src href="${esc(r.url)}" target="_blank" rel="noopener noreferrer" aria-label="Open the original" title="Open the original"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7M8 7h9v9"/></svg></a>` : ''
+// YouTube keeps a public thumbnail for every video, so a YouTube save shows a picture even before anything is stored
+// (phones, or the website without the extension). Big first, then the always-there small one if the big one doesn't exist.
+function ytPic(r) {
+  if (r.image || r.source !== 'youtube' || !r.url) return null
+  const id = youtubeId(r.url)
+  if (!id) return null
+  const short = /\/shorts\//.test(r.url)
+  return { big: `https://i.ytimg.com/vi/${id}/${short ? 'oar2' : 'maxresdefault'}.jpg`, small: `https://i.ytimg.com/vi/${id}/mqdefault.jpg` }
+}
+const picOf = r => r.image ? imgSrc(r.image) : (ytPic(r) || {}).small || null // a stored picture, else YouTube's own small one
+const ytImg = (p, extra = '') => `<img alt="" ${extra} src="${esc(p.big)}" data-small="${esc(p.small)}" onerror="if(this.dataset.small){this.src=this.dataset.small;delete this.dataset.small}else this.remove()">`
 function buildCard(r) {
   const el = document.createElement('article')
   el.dataset.id = r.id
@@ -5548,8 +5580,10 @@ function buildCard(r) {
     return el
   }
   el.className = 'card' + (isNew(r) ? ' isnew' : '')
+  const yp = ytPic(r)
   const pic = r.image
     ? `<img alt="" loading="lazy" decoding="async" draggable="false" src="${esc(imgSrc(r.image))}"${focusAttr(r)}>`
+    : yp ? ytImg(yp, 'loading="lazy" decoding="async" draggable="false"')
     : `<div class="poster${r.preview === 'pending' && r.url ? ' coming' : ''}">${glyph(r.source)}<span class="code mono">${esc(r.url ? shortCode(r.url) : '')}</span></div>`
   const kind = r.kind && r.kind !== 'link' && r.kind !== 'pin' ? ` · ${KIND[r.kind]}` : ''
   const label = info(r.source).label + kind
@@ -6129,7 +6163,8 @@ function fillDetail(r) {
   // GIFs just loop in the big view, silently and without controls
   const anim = VIDEO_PREVIEWS && r.media === 'gif' && (r.video ? `<video src="${esc(imgSrc(r.video))}" muted autoplay loop playsinline></video>` : r.gif ? `<img alt="" src="${esc(imgSrc(r.gif))}">` : '')
   const vr = vidRatio(r), shape = vr ? ` style="aspect-ratio:${(1 / vr).toFixed(4)};object-fit:cover"` : '' // a video keeps its own shape here
-  const pic = anim ? anim : r.image ? `<img alt="" src="${esc(imgSrc(r.image))}"${shape}>` : `<div class="poster">${glyph(r.source)}<span class="code mono">${esc(r.url ? shortCode(r.url) : '')}</span></div>`
+  const yp2 = ytPic(r)
+  const pic = anim ? anim : r.image ? `<img alt="" src="${esc(imgSrc(r.image))}"${shape}>` : yp2 ? ytImg(yp2) : `<div class="poster">${glyph(r.source)}<span class="code mono">${esc(r.url ? shortCode(r.url) : '')}</span></div>`
   // Claude pages can't embed other sites' players, so the picture itself opens the original
   if (r.kind === 'note') stage.innerHTML = `<div class="notecard">${esc(r.note)}</div>`
   else if (VIDEO_PREVIEWS && r.video && r.media !== 'gif') {
@@ -9720,8 +9755,8 @@ function renderLib() {
   $('#cv-lib-tags').innerHTML = `<button type="button" class="kchip" data-ltag="" aria-pressed="${!LIB.tag}">All<span class="n">${S.refs.length}</span></button>` + (stills ? `<button type="button" class="kchip" data-ltag="~stills" aria-pressed="${LIB.tag === '~stills'}">Stills<span class="n">${stills}</span></button>` : '') + tags.map(t => `<button type="button" class="kchip" data-ltag="${esc(t)}" aria-pressed="${LIB.tag === t}">${esc(t)}<span class="n">${counts[t]}</span></button>`).join('')
   $('#cv-lib').classList.toggle('picking', LIB.sel.size > 0)
   $('#cv-lib').innerHTML = list.map(r => `<button type="button" class="t${LIB.sel.has(r.id) ? ' picked' : ''}" draggable="true" data-ref="${esc(r.id)}" aria-label="${esc(titleOf(r).slice(0, 120))}">${
-    r.image ? `<img alt="" src="${esc(imgSrc(r.image))}"${focusAttr(r)} loading="lazy">` : `<div class="poster">${glyph(r.source)}<b>${esc(titleOf(r).slice(0, 90))}</b></div>`
-  }<i class="pickdot" data-pick></i>${r.image ? `<span>${esc(titleOf(r).slice(0, 60))}</span>` : ''}</button>`).join('') || '<p class="hint">Nothing matches.</p>'
+    picOf(r) ? `<img alt="" src="${esc(picOf(r))}"${focusAttr(r)} loading="lazy">` : `<div class="poster">${glyph(r.source)}<b>${esc(titleOf(r).slice(0, 90))}</b></div>`
+  }<i class="pickdot" data-pick></i>${picOf(r) ? `<span>${esc(titleOf(r).slice(0, 60))}</span>` : ''}</button>`).join('') || '<p class="hint">Nothing matches.</p>'
   renderLibFoot(all)
 }
 function renderLibFoot(all = libList()) {
@@ -12158,8 +12193,8 @@ function renderProjects() {
   if (p) renderProject(p); else { PJ.id = null; mountCanvas(false); renderProjectList() }
 }
 function projCover(p, inside = '') {
-  const imgs = p.refs.map(byId).filter(r => r && r.image).slice(0, 3)
-  return `<div class="pj-cover n${imgs.length}"><span class="pj-cover-back"></span>${imgs.map((r, i) => `<img class="i${i}" alt="" src="${esc(imgSrc(r.image))}"${focusAttr(r)} loading="lazy">`).join('')}<span class="pj-cover-front">${inside}</span></div>`
+  const imgs = p.refs.map(byId).filter(r => r && picOf(r)).slice(0, 3)
+  return `<div class="pj-cover n${imgs.length}"><span class="pj-cover-back"></span>${imgs.map((r, i) => `<img class="i${i}" alt="" src="${esc(picOf(r))}"${focusAttr(r)} loading="lazy">`).join('')}<span class="pj-cover-front">${inside}</span></div>`
 }
 // the projects page sorts by the last change (default), by name or by size; remembered
 const PJSORT = [['recent', 'Recent'], ['az', 'A–Z'], ['size', 'Most references']]
