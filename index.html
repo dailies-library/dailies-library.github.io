@@ -4217,14 +4217,20 @@ const silent = r => !r.title && !r.caption && (r.kind === 'pin' || r.kind === 'i
 const newId = p => p + '-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7)
 
 let toastTimer
+let toastShownAt = 0, toastFor = 0
 function toast(msg, action) {
   const el = $('#toast')
   el.innerHTML = esc(msg) + (action ? `<button type="button">${esc(action.label)}</button>` : '')
   if (action) el.querySelector('button').onclick = () => { action.run(); el.classList.remove('show') }
   el.classList.add('show')
   clearTimeout(toastTimer)
-  toastTimer = setTimeout(() => el.classList.remove('show'), action ? (action.ms || 5000) : 2800)
+  toastShownAt = Date.now(); toastFor = action ? (action.ms || 5000) : 2800
+  toastTimer = setTimeout(() => el.classList.remove('show'), toastFor)
 }
+// a toast never outstays its time: a phone pauses timers while the page is in the background, so check on return;
+// and a tap anywhere else after a moment dismisses it (Undo stays reachable for its first second and a half)
+document.addEventListener('visibilitychange', () => { if (!document.hidden && $('#toast').classList.contains('show') && Date.now() - toastShownAt > toastFor) $('#toast').classList.remove('show') })
+document.addEventListener('pointerdown', e => { if ($('#toast').classList.contains('show') && !e.target.closest('#toast') && Date.now() - toastShownAt > 1500) $('#toast').classList.remove('show') }, { capture: true, passive: true })
 
 // ------------------------------------------------------------------ milestone confetti (the one celebration Rohit kept)
 const FUN = (() => { try { return { party: true, ...(JSON.parse(localStorage.getItem('dailies:fun')) || {}) } } catch { return { party: true } } })()
@@ -4333,18 +4339,19 @@ function impGo(view) { IMP.view = view; IMP.err = ''; renderImport() }
 function renderImport() {
   const body = $('#imp-body'), back = `<button class="imp-back" type="button" data-imp-back>${BACK_IC}Import</button>`
   if (IMP.view === 'home') {
+    const phone = isTouch() || matchMedia('(max-width: 760px)').matches
     const srcs = [
-      ...(window.DAILIES_WEB && !S.ext ? [['extension', 'Get the Chrome extension', 'Needed for Pinterest, Instagram and YouTube, and for Save buttons on posts']] : []),
-      ['pinterest', 'Pinterest', 'Your boards, from your username'],
-      ['instagram', 'Instagram', 'Your saved collections'],
-      ['youtube', 'YouTube', 'A playlist, from its link'],
+      ...(window.DAILIES_WEB && !S.ext && !phone ? [['extension', 'Get the Chrome extension', 'Needed for Pinterest, Instagram and YouTube, and for Save buttons on posts']] : []),
+      ['pinterest', 'Pinterest', phone ? 'Your boards · from Chrome on a computer' : 'Your boards, from your username'],
+      ['instagram', 'Instagram', phone ? 'Your saved collections · from Chrome on a computer' : 'Your saved collections'],
+      ['youtube', 'YouTube', phone ? 'A playlist · from Chrome on a computer' : 'A playlist, from its link'],
       ['links', 'A list of links', 'From a doc, a sheet or your bookmarks'],
       ...(S.owner && S.mcp && !window.DAILIES_WEB ? [['slack', 'Slack', 'A channel you share references in']] : []),
     ]
     body.innerHTML = `${impArt(['pinterest', 'instagram', 'youtube'])}
       ${IMP.first ? '<p class="imp-kick">Welcome to Dailies</p>' : ''}
       <h2>Bring your references in</h2>
-      <p class="imp-lead">${IMP.first ? 'Start with what you’ve already saved. After this, new saves arrive by themselves.' : 'From wherever you’ve been saving them. New saves keep arriving after the first import.'}</p>
+      <p class="imp-lead">${IMP.first ? 'Start with what you’ve already saved. After this, new saves arrive by themselves.' : 'From wherever you’ve been saving them. New saves keep arriving after the first import.'}${phone ? ' Board and collection imports run from Chrome on a computer with the Dailies extension; everything they bring in shows up here too.' : ''}</p>
       <div class="imp-srcs">${srcs.map(([k, t, sub], i) => `<button class="imp-src" type="button" data-imp-src="${k}" style="--i:${i}"><span class="lg">${k === 'extension' ? EXT_IC : glyph(k === 'links' ? 'web' : k, true)}</span><span class="tx"><b>${t}</b><span>${IMP.did[k] ? `<i class="imp-did">${CHECK_IC}</i>Imported · ${esc(IMP.did[k])}` : sub}</span></span>${CHEV_R}</button>`).join('')}</div>
       ${IMP.first ? '<div class="imp-skip"><button class="linkbtn" type="button" data-imp-skip>Start with an empty library</button></div>' : ''}`
   } else if (IMP.view === 'extension') {
