@@ -736,8 +736,9 @@ body.canvas-mode #import-btn, body.projects-mode #import-btn { display: none; }
 .imp-src:hover .chev { translate: 2px 0; color: var(--text); }
 .imp-skip { margin-top: 20px; text-align: center; }
 .empty .linkbtn { font: inherit; color: inherit; font-weight: 600; text-decoration-color: currentColor; }
-.imp-steps { margin: 0 0 16px; padding: 0; list-style: none; display: grid; gap: 10px; }
-.imp-steps li { display: flex; gap: 12px; align-items: flex-start; padding: 12px 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); font-size: 14px; line-height: 1.5; color: var(--text); }
+.imp-howto { margin: 0 0 16px; padding: 0; list-style: none; display: grid; gap: 10px; counter-reset: how; }
+.imp-howto li { display: flex; gap: 12px; align-items: flex-start; padding: 12px 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); font-size: 14px; line-height: 1.5; color: var(--text); counter-increment: how; }
+.imp-howto li::before { content: counter(how); flex: none; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; background: var(--surface-2); font-size: 12px; font-weight: 600; }
 .imp-dl { display: inline-block; padding: 7px 14px; border-radius: 999px; background: var(--text); color: var(--bg); font-weight: 600; text-decoration: none; margin: 0 4px 6px 0; }
 .imp-dl:hover { opacity: .9; }
 .imp-status { margin: 0 0 12px; font-size: 14px; color: var(--muted); display: flex; gap: 8px; align-items: center; }
@@ -4241,7 +4242,7 @@ function renderImport() {
     body.innerHTML = `${back}
       <h2>Get the Chrome extension</h2>
       <p class="imp-lead">It saves posts with one click, fetches pictures for links you paste, and brings in your Pinterest boards, Instagram saves and YouTube playlists. Chrome on a computer only. Four steps, once.</p>
-      <ol class="imp-steps">
+      <ol class="imp-howto">
         <li><span><a class="imp-dl" href="/dailies-extension.zip" download>Download the extension</a> and double-click the zip to unpack it. Keep the <b>dailies-extension</b> folder somewhere it can stay (not Downloads if you clear it).</span></li>
         <li><span>In Chrome, open <b>chrome://extensions</b> (copy that into the address bar) and turn on <b>Developer mode</b>, top right.</span></li>
         <li><span>Press <b>Load unpacked</b> and choose the <b>dailies-extension</b> folder.</span></li>
