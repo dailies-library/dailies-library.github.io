@@ -4830,7 +4830,7 @@ function renderImpProgress() {
     const total = Math.max(b.count || 0, b.got), done = doneOf(b)
     const pct = done ? 100 : total ? Math.min(98, Math.round(b.got / total * 100)) : 4
     const n = b.error ? esc(b.error) : done ? `${CHECK_IC.replace('<svg', '<svg width="12" height="12" style="vertical-align:-1px;margin-right:4px"')}${plural(b.got, 'pin')}` : `${b.got.toLocaleString()} of ${total.toLocaleString()}`
-    return `<div class="imp-row${done && !b.error ? ' done' : ''}"><span class="mini"${b.pic ? ` style="background-image:url('${b.pic}')"` : ''}></span><div><b>${esc(b.label)}</b><div class="meter${!done && !b.got && !b.error ? ' wait' : ''}"><i style="--p:${pct}%"></i></div></div><span class="n">${n}</span></div>`
+    return `<div class="imp-row${done && !b.error ? ' done' : ''}"><span class="mini"${b.pic ? ` style="background-image:url('${b.pic}')"` : ''}></span><div><b>${esc(b.label)}</b><div class="meter${!done && !b.got && !b.error && !run.stopped && !run.finished ? ' wait' : ''}"><i style="--p:${pct}%"></i></div></div><span class="n">${n}</span></div>`
   }).join('')
   const partial = run.finished && run.boards.some(b => b.partial)
   const stalled = !run.finished && !run.heard && Date.now() - (run.startedAt || 0) > 25000 // the extension hasn't said a word
@@ -6689,9 +6689,9 @@ async function uploadImage(blob, { thumb = false } = {}) {
   const small = await shrink(blob)
   const type = /^image\/(png|jpeg|gif|webp)$/.test(small.type) ? small.type : 'image/jpeg'
   const { w, h } = await dims(small)
-  const up = await S.assets.upload(small, { type })
+  const [up, t] = await Promise.all([S.assets.upload(small, { type }), thumb ? makeThumb(small, w, h) : null])
   const out = { image: up.id, imageW: w, imageH: h }
-  if (thumb) out.thumb = await makeThumb(small, w, h) // null when the picture is small enough as it is (so an old thumb never outlives its picture)
+  if (thumb) out.thumb = t // null when the picture is small enough as it is (so an old thumb never outlives its picture)
   return out
 }
 // the picture to show on the wall and in lists: the small copy when there is one
@@ -7064,13 +7064,33 @@ async function saveDropped(files) {
 function openInbox() {
   if (S.inboxOpen || !S.canWrite) return
   S.inboxOpen = true
-  let chain = Promise.resolve()
+  // up to four saves at a time: each one spends most of its time uploading and reading its picture, so four overlap well
+  // (one at a time took 1–2 s a pin, a 70-pin board three minutes); the same id, and anything without an id, stays in order
+  const LANES = 4, lane = new Map(), queue = []
+  let running = 0
+  const pump = () => {
+    while (running < LANES && queue.length) {
+      const i = queue.findIndex(j => !lane.has(j.key)); if (i < 0) return
+      const job = queue.splice(i, 1)[0]
+      running++; lane.set(job.key, true)
+      job.run().finally(() => { running--; lane.delete(job.key); pump() })
+    }
+  }
+  const save = (key, run) => { queue.push({ key, run }); pump() }
   window.addEventListener('message', e => {
     if (e.source !== window || !e.data || e.data.type !== 'dailies:save' || !e.data.item) return
     const item = e.data.item
-    chain = chain.then(() => receiveSave(item)).then(
+    save(String(item.id || 'noid'), () => receiveSave(item).then(
       r => { if (r && r.state === 'later') return; impTick(item, r); window.postMessage({ type: 'dailies:result', id: item.id, ...r }, '*') }, // 'later': no answer, so it stays in the extension's queue
-      err => window.postMessage({ type: 'dailies:result', id: item.id, state: 'error', message: String(err && (err.message || err.code) || err) }, '*'))
+      err => window.postMessage({ type: 'dailies:result', id: item.id, state: 'error', message: String(err && (err.message || err.code) || err) }, '*')))
+  })
+  // the extension asks which of a board's pins are here already, so it doesn't fetch their pictures again (a re-read after its
+  // memory was reset used to download every picture of every followed board for nothing)
+  window.addEventListener('message', e => {
+    if (e.source !== window || !e.data || e.data.type !== 'dailies:have') return
+    const ids = Array.isArray(e.data.ids) ? e.data.ids.slice(0, 500).map(String) : []
+    const have = ids.filter(id => byId('x-' + id.replace(/[^A-Za-z0-9_-]/g, '').slice(0, 40)))
+    window.postMessage({ type: 'dailies:have-result', nonce: e.data.nonce, have }, '*')
   })
   window.addEventListener('message', e => {
     if (e.source !== window || !e.data) return
