@@ -9298,6 +9298,7 @@ function renderSites() {
   const empty = favOnly && !favCount ? '<div class="st-empty"><b>No favourites yet</b>Tap the star on any website to keep it here.</div>'
     : `<div class="st-empty"><b>Nothing here${price ? ' at that price' : ''}</b>${pick && pick.startsWith('c-') ? 'Open a website’s ⋯ menu and choose Categories to put it here.' : 'Try other words, another category or another price.'}</div>`
   wrap.innerHTML = head + chips + (list.length ? list.map(card).join('') : empty)
+  applySiteSize() // again now the slider exists, so its track shows the right fill
 }
 // Websites: grid or list, and how big (0 to 100, like the Library's card size): grid cards 210 to 440 px wide; list rows from
 // one tight line to roomy rows with two lines of description
@@ -9311,6 +9312,7 @@ function applySiteSize() {
   w.style.setProperty('--sc-logo', Math.round(30 + t * 26) + 'px')
   w.style.setProperty('--sc-pad', Math.round(8 + t * 12) + 'px')
   w.style.setProperty('--sc-lines', t > .55 ? 2 : 1)
+  const inp = $('#st-size'); if (inp) inp.style.setProperty('--fill', siteSize() + '%') // the white part of the track follows the handle
 }
 const HEART_IC = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.2s-7.6-4.6-7.6-10.3A4.4 4.4 0 0 1 12 7.1a4.4 4.4 0 0 1 7.6 2.8c0 5.7-7.6 10.3-7.6 10.3z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>'
 // a site you saved is a favourite unless you unstarred it; a library site is a favourite once starred (starring saves it)
