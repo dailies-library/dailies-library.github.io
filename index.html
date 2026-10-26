@@ -1011,7 +1011,7 @@ body.sites-mode .row1 { padding-bottom: 12px; }
 .st-wrap.list .sc-top { padding-right: 0 !important; }
 .st-wrap.list .sc-d { -webkit-line-clamp: var(--sc-lines, 1); }
 .st-wrap.list .sc-star, .st-wrap.list .site.sc .more { top: 50%; translate: 0 -50%; }
-.st-wrap.list .site.sc.lib .sc-star { right: 12px; }
+
 .site.sc { padding: 16px 16px 16px; display: grid; gap: 12px; align-content: start; }
 .sc-top { display: flex; align-items: center; gap: 12px; min-width: 0; padding-right: 68px; }
 .sc-logo { flex: none; width: 46px; height: 46px; border-radius: 12px; background: #fff; display: grid; place-items: center; overflow: hidden; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .08); }
@@ -1044,11 +1044,13 @@ body.sites-mode .row1 { padding-bottom: 12px; }
 .sc-star:hover { color: var(--text); }
 .sc-star.on { color: #ff4f6d; } .sc-star.on svg { fill: currentColor; }
 .sc-star:active { transform: scale(.85); }
-.site.sc:not(.lib) .sc-star { right: 46px; }
-.site.sc .sc-top { padding-right: 76px; } .site.sc.lib .sc-top { padding-right: 40px; }
-@media (max-width: 760px) { .st-wrap.list .site.sc { grid-template-columns: 1fr; gap: 6px; padding-right: 12px; } .st-wrap.list .sc-top { padding-right: 76px !important; } .st-wrap.list .site.sc.lib .sc-top { padding-right: 40px !important; } .st-wrap.list .sc-d { -webkit-line-clamp: 2; } .st-wrap.list .sc-star, .st-wrap.list .site.sc .more { top: calc(var(--sc-pad, 12px) + 4px); translate: none; } }
+.site.sc .sc-star { right: 46px; }
+.site.sc .sc-top { padding-right: 76px; }
+.st-cats .st-arch { display: inline-flex; align-items: center; gap: 6px; }
+.st-cats .st-arch svg { width: 14px; height: 14px; }
+@media (max-width: 760px) { .st-wrap.list .site.sc { grid-template-columns: 1fr; gap: 6px; padding-right: 12px; } .st-wrap.list .sc-top { padding-right: 76px !important; } .st-wrap.list .sc-d { -webkit-line-clamp: 2; } .st-wrap.list .sc-star, .st-wrap.list .site.sc .more { top: calc(var(--sc-pad, 12px) + 4px); translate: none; } }
 @media (max-width: 520px) { .st-size { display: none !important; } }
-@media (max-width: 760px) { .st-filt { margin-left: 0; } .site.sc .sc-top { padding-right: 70px; } .site.sc.lib .sc-top { padding-right: 36px; } .sc-star { top: 9px; right: 9px; } .site.sc:not(.lib) .sc-star { right: 42px; } }
+@media (max-width: 760px) { .st-filt { margin-left: 0; } .site.sc .sc-top { padding-right: 70px; } .sc-star { top: 9px; right: 9px; } .site.sc .sc-star { right: 42px; } }
 @media (max-width: 760px) {
   .st-wrap.logos { grid-template-columns: 1fr; gap: 8px; }
   .site.sc { padding: 12px 12px 13px; gap: 8px; }
@@ -6269,6 +6271,7 @@ function openMenu(id, anchor, at = null) {
     <button type="button" role="menuitem" data-act="project">Add to project…</button>
     ${isSite(r) ? '<button type="button" role="menuitem" data-act="sitecats">Categories and price…</button>' : ''}` : ''}
     ${isSite(r) ? '<button type="button" role="menuitem" data-act="details">Details and notes</button>' : ''}
+    ${isSite(r) && S.canWrite ? `<button type="button" role="menuitem" data-act="sitearch">${isArch(r) ? 'Unarchive' : 'Archive'}</button>` : ''}
     <button type="button" role="menuitem" data-act="similar">Find similar</button>
     ${r.url ? `<a role="menuitem" href="${esc(r.url)}" target="_blank" rel="noopener noreferrer" data-act="open">Open on ${esc(info(r.source).label === 'Web' ? r.domain || 'the web' : info(r.source).label)} ↗</a>
     <button type="button" role="menuitem" data-act="copy">Copy link</button>` : ''}
@@ -6352,6 +6355,12 @@ $('#cardmenu').addEventListener('click', async e => {
   }
   const item = e.target.closest('[data-act]')
   if (!item || !menuFor) return
+  if (menuFor.startsWith('lib:')) {
+    const url = menuFor.slice(4), act = item.dataset.act, e2 = SITE_LIB.find(x => x[1] === url)
+    closeMenu()
+    if (act === 'lib-arch' && e2) archiveSite(url, e2[0], !archivedSet().has(libKey(url)))
+    return
+  }
   if (menuFor.startsWith('board:')) {
     const name = menuFor.slice(6), act = item.dataset.act, what = S.source === 'instagram' ? 'collection' : 'board'
     closeMenu()
@@ -6379,6 +6388,7 @@ $('#cardmenu').addEventListener('click', async e => {
   if (act === 'similar') { closeMenu(); showSimilar(r.id); return }
   if (act === 'sitecats') { e.stopPropagation(); siteCatsMenu(r); return }
   if (act === 'details') { closeMenu(); openDetail(r.id); return }
+  if (act === 'sitearch') { closeMenu(); archiveSite(r.url, nameOf(r), !isArch(r)); return }
   if (act === 'project') { const a = (document.querySelector('.more[aria-expanded="true"]') || item).getBoundingClientRect(); closeMenu(); openProjMenu([r.id], a); return }
   if (act === 'copy') {
     closeMenu()
@@ -9265,10 +9275,12 @@ function renderSites() {
   const saved = S.refs.filter(isSite).sort((x, y) => String(y.savedAt || '').localeCompare(String(x.savedAt || '')))
   const have = new Set(saved.map(r => libKey(r.url || '')))
   const base = [...saved, ...libRefs().filter(r => !have.has(libKey(r.url))).sort((x, y) => x.title.localeCompare(y.title))]
-  const favOnly = !!S.siteFav, price = S.sitePrice || null
+  const archOn = !!S.siteArch, archCount = base.filter(isArch).length
+  if (archOn && !archCount) S.siteArch = false
+  const favOnly = !!S.siteFav && !S.siteArch, price = S.sitePrice || null
   const priced = r => !price || (price === 'free' ? ['free', 'freemium'].includes(priceOf(r)) : priceOf(r) === 'paid')
-  const all = base.filter(r => terms.every(t => hay(r).includes(t)) && priced(r) && (!favOnly || isFav(r)))
-  const favCount = base.filter(r => isFav(r) && priced(r) && terms.every(t => hay(r).includes(t))).length
+  const all = base.filter(r => terms.every(t => hay(r).includes(t)) && priced(r) && (S.siteArch ? isArch(r) : !isArch(r)) && (!favOnly || isFav(r)))
+  const favCount = base.filter(r => isFav(r) && !isArch(r) && priced(r) && terms.every(t => hay(r).includes(t))).length
   // categories: one or more per site, as chips with counts (Rohit picked the chips layout, 26 Oct)
   const catsOf = new Map(all.map(r => [r.id, siteCatsOf(r)]))
   const counts = {}
@@ -9277,7 +9289,7 @@ function renderSites() {
   const pick = S.siteCat && cats.some(c => c[0] === S.siteCat) ? S.siteCat : null
   const list = pick ? all.filter(r => catsOf.get(r.id).includes(pick)) : all
   const shownCats = cats.filter(([k]) => counts[k] || k === pick || k.startsWith('c-'))
-  const sig = [S.siteLayout, favOnly, price, pick, terms.join(' '), JSON.stringify(counts), favCount, shownCats.map(c => c[1]).join(), list.map(r => r.id + (r.title || '') + (r.price || '') + isFav(r) + catsOf.get(r.id).join()).join('|')].join('#')
+  const sig = [S.siteLayout, S.siteArch, archCount, favOnly, price, pick, terms.join(' '), JSON.stringify(counts), favCount, shownCats.map(c => c[1]).join(), list.map(r => r.id + (r.title || '') + (r.price || '') + isFav(r) + catsOf.get(r.id).join()).join('|')].join('#')
   if (wrap.dataset.sig === sig && wrap.dataset.shown === '1') return
   wrap.dataset.sig = sig
   wrap.classList.add('logos')
@@ -9289,13 +9301,13 @@ function renderSites() {
     <label class="gb-size st-size" title="${S.siteLayout === 'list' ? 'Row size' : 'Card size'}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h4v4H4zM10 4h4v4h-4zM16 4h4v4h-4zM4 10h4v4H4zM10 10h4v4h-4zM16 10h4v4h-4zM4 16h4v4H4zM10 16h4v4h-4zM16 16h4v4h-4z"/></svg><input type="range" id="st-size" min="0" max="100" step="2" value="${siteSize()}" aria-label="${S.siteLayout === 'list' ? 'Row size' : 'Card size'}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3h8v8H3zM13 3h8v8h-8zM3 13h8v8H3zM13 13h8v8h-8z"/></svg></label>
     <div class="st-price" role="group" aria-label="Price">${[['', 'Any price'], ['free', 'Free'], ['paid', 'Paid']].map(([k, l]) => `<button type="button" data-siteprice="${k}" aria-pressed="${(price || '') === k}">${l}</button>`).join('')}</div></div>
     ${S.canWrite && pick && pick.startsWith('c-') ? '<button class="linkbtn" type="button" data-sitecat-del>Remove this category</button>' : ''}</div>`
-  const chips = `<nav class="st-cats" aria-label="Website categories"><button class="tab" type="button" data-sitecat="" data-siteall aria-pressed="${!pick && !favOnly}">All <span class="n">${favOnly ? base.filter(r => priced(r) && terms.every(t => hay(r).includes(t))).length : all.length}</span></button><button class="tab st-fav" type="button" data-sitefav aria-pressed="${favOnly}">${HEART_IC}Favourites <span class="n">${favCount}</span></button>${shownCats.map(([k, l]) => `<button class="tab" type="button" data-sitecat="${esc(k)}" aria-pressed="${pick === k}">${esc(l)} <span class="n">${counts[k] || 0}</span></button>`).join('')}${S.canWrite ? '<button class="tab st-add" type="button" data-sitecat-add>+ Add</button>' : ''}</nav>`
+  const chips = `<nav class="st-cats" aria-label="Website categories"><button class="tab" type="button" data-sitecat="" data-siteall aria-pressed="${!pick && !favOnly && !S.siteArch}">All <span class="n">${favOnly || S.siteArch ? base.filter(r => !isArch(r) && priced(r) && terms.every(t => hay(r).includes(t))).length : all.length}</span></button><button class="tab st-fav" type="button" data-sitefav aria-pressed="${favOnly}">${HEART_IC}Favourites <span class="n">${favCount}</span></button>${shownCats.map(([k, l]) => `<button class="tab" type="button" data-sitecat="${esc(k)}" aria-pressed="${pick === k}">${esc(l)} <span class="n">${counts[k] || 0}</span></button>`).join('')}${archCount ? `<button class="tab st-arch" type="button" data-sitearch aria-pressed="${!!S.siteArch}">${ARCHIVE_IC}Archived <span class="n">${archCount}</span></button>` : ''}${S.canWrite ? '<button class="tab st-add" type="button" data-sitecat-add>+ Add</button>' : ''}</nav>`
   const card = (r, i) => {
     const name = nameOf(r), about = siteAbout(r), pr = priceOf(r), fav = isFav(r)
     const star = S.canWrite ? `<button class="sc-star${fav ? ' on' : ''}" type="button" data-sitestar="${esc(r.id)}" aria-pressed="${fav}" aria-label="${fav ? 'Remove from favourites' : 'Add to favourites'}" title="${fav ? 'Remove from favourites' : 'Add to favourites'}">${HEART_IC}</button>` : ''
-    return `<article class="site sc${first ? ' enter' : ''}${r.lib ? ' lib' : ''}" data-id="${esc(r.id)}" data-url="${esc(r.url || '')}" style="--d:${Math.min(i, 20) * 30}ms">${star}${!r.lib && S.canWrite ? MORE : ''}<div class="sc-top"><span class="sc-logo"><b class="sc-l">${esc((name[0] || '?').toUpperCase())}</b><img alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" src="${esc(siteLogo(r))}" onload="if(this.naturalWidth<32)this.remove()" onerror="this.remove()"></span><div class="sc-n"><b>${esc(name)}</b><span class="sc-sub"><i class="sc-dm">${esc(r.domain || siteHost(r))}</i>${pr ? `<em class="sc-pr ${pr}">${PRICE_LABEL[pr]}</em>` : ''}</span></div></div><p class="sc-d${about ? '' : ' none'}">${esc(about || 'This site doesn’t describe itself.')}</p></article>`
+    return `<article class="site sc${first ? ' enter' : ''}${r.lib ? ' lib' : ''}" data-id="${esc(r.id)}" data-url="${esc(r.url || '')}" style="--d:${Math.min(i, 20) * 30}ms">${isArch(r) ? '' : star}${S.canWrite ? MORE : ''}<div class="sc-top"><span class="sc-logo"><b class="sc-l">${esc((name[0] || '?').toUpperCase())}</b><img alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" src="${esc(siteLogo(r))}" onload="if(this.naturalWidth<32)this.remove()" onerror="this.remove()"></span><div class="sc-n"><b>${esc(name)}</b><span class="sc-sub"><i class="sc-dm">${esc(r.domain || siteHost(r))}</i>${pr ? `<em class="sc-pr ${pr}">${PRICE_LABEL[pr]}</em>` : ''}</span></div></div><p class="sc-d${about ? '' : ' none'}">${esc(about || 'This site doesn’t describe itself.')}</p></article>`
   }
-  const empty = favOnly && !favCount ? '<div class="st-empty"><b>No favourites yet</b>Tap the star on any website to keep it here.</div>'
+  const empty = S.siteArch ? '<div class="st-empty"><b>Nothing archived</b></div>' : favOnly && !favCount ? '<div class="st-empty"><b>No favourites yet</b>Tap the star on any website to keep it here.</div>'
     : `<div class="st-empty"><b>Nothing here${price ? ' at that price' : ''}</b>${pick && pick.startsWith('c-') ? 'Open a website’s ⋯ menu and choose Categories to put it here.' : 'Try other words, another category or another price.'}</div>`
   wrap.innerHTML = head + chips + (list.length ? list.map(card).join('') : empty)
   applySiteSize() // again now the slider exists, so its track shows the right fill
@@ -9313,6 +9325,32 @@ function applySiteSize() {
   w.style.setProperty('--sc-pad', Math.round(8 + t * 12) + 'px')
   w.style.setProperty('--sc-lines', t > .55 ? 2 : 1)
   const inp = $('#st-size'); if (inp) inp.style.setProperty('--fill', siteSize() + '%') // the white part of the track follows the handle
+}
+// archived websites (any site: yours or from the ready-made list), by address; they stay out of All, Favourites and the categories
+const ARCHIVE_IC = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 5h17v4h-17zM5 9v10h14V9M10 13h4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/></svg>'
+const archivedSet = () => new Set((S.settings && S.settings.siteArchived) || [])
+const isArch = r => archivedSet().has(libKey(r.url || ''))
+async function archiveSite(url, name, on = true) {
+  const k = libKey(url); if (!k) return
+  const cur = (S.settings && S.settings.siteArchived) || []
+  const next = on ? [...new Set([...cur, k])] : cur.filter(x => x !== k)
+  await setSetting({ siteArchived: next })
+  redrawSites()
+  toast(on ? `Archived ${name}` : `${name} is back`, on ? { label: 'Undo', run: () => archiveSite(url, name, false) } : undefined)
+}
+// the ⋯ menu of a site from the ready-made list (not saved): open it, or archive it
+function openLibMenu(url, anchor) {
+  const menu = $('#cardmenu'), e = SITE_LIB.find(x => x[1] === url)
+  if (!e) return
+  if (menuFor === 'lib:' + url) return closeMenu()
+  closeMenu()
+  menuFor = 'lib:' + url
+  anchor.setAttribute('aria-expanded', 'true')
+  const arch = archivedSet().has(libKey(url))
+  menu.innerHTML = `<a role="menuitem" href="${esc(url)}" target="_blank" rel="noopener noreferrer" data-act="open">Open ${esc(e[0])} ↗</a>${S.canWrite ? `<button type="button" role="menuitem" data-act="lib-arch">${arch ? 'Unarchive' : 'Archive'}</button>` : ''}`
+  menu.hidden = false
+  const a = anchor.getBoundingClientRect(), m = menu.getBoundingClientRect()
+  placeAt(menu, Math.max(8, Math.min(innerWidth - m.width - 8, a.right - m.width)), a.bottom + 6 + m.height > innerHeight ? a.top - m.height - 6 : a.bottom + 6)
 }
 const HEART_IC = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.2s-7.6-4.6-7.6-10.3A4.4 4.4 0 0 1 12 7.1a4.4 4.4 0 0 1 7.6 2.8c0 5.7-7.6 10.3-7.6 10.3z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>'
 // a site you saved is a favourite unless you unstarred it; a library site is a favourite once starred (starring saves it)
@@ -9488,6 +9526,8 @@ $('#st-wrap').addEventListener('input', e => {
 $('#st-wrap').addEventListener('click', async e => {
   const lay = e.target.closest('[data-sitelayout]')
   if (lay) { S.siteLayout = lay.dataset.sitelayout; lsSet('dailies.sitelayout', S.siteLayout); redrawSites(); return }
+  if (e.target.closest('[data-sitearch]')) { S.siteArch = !S.siteArch; if (S.siteArch) { S.siteFav = false; lsSet('dailies.sitefav', false) } S.siteCat = null; redrawSites(); return }
+  if (e.target.closest('[data-sitefav]')) S.siteArch = false
   if (e.target.closest('[data-sitefav]')) { S.siteFav = !S.siteFav; lsSet('dailies.sitefav', S.siteFav); redrawSites(); return }
   const pr = e.target.closest('[data-siteprice]')
   if (pr) { S.sitePrice = pr.dataset.siteprice || null; lsSet('dailies.siteprice', S.sitePrice || ''); redrawSites(); return }
@@ -9511,7 +9551,7 @@ $('#st-wrap').addEventListener('click', async e => {
     return
   }
   const chip = e.target.closest('[data-sitecat]')
-  if (chip && chip.hasAttribute('data-siteall') && S.siteFav) { S.siteFav = false; lsSet('dailies.sitefav', false) } // All: everything, favourites off
+  if (chip && chip.hasAttribute('data-siteall')) { S.siteArch = false; if (S.siteFav) { S.siteFav = false; lsSet('dailies.sitefav', false) } } // All: everything, favourites and archive off
   if (chip) { S.siteCat = chip.dataset.sitecat || null; lsSet('dailies.sitecat', S.siteCat || ''); redrawSites(); return }
   if (e.target.closest('[data-sitecat-del]')) {
     const k = S.siteCat, label = siteCatLabel(k)
@@ -9538,7 +9578,7 @@ $('#st-wrap').addEventListener('click', async e => {
   const c = e.target.closest('.site'); if (!c) return
   if (e.target.closest('[data-src]')) { e.stopPropagation(); return }
   const more = e.target.closest('[data-more]')
-  if (more) { e.stopPropagation(); openMenu(c.dataset.id, more); return }
+  if (more) { e.stopPropagation(); if (c.classList.contains('lib')) openLibMenu(c.dataset.url, more); else openMenu(c.dataset.id, more); return }
   // a website card opens the website (its details, categories and price are in the ⋯ menu)
   if (c.dataset.url) window.open(c.dataset.url, '_blank', 'noopener')
 })
