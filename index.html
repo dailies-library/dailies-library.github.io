@@ -4776,6 +4776,8 @@ async function stopPinImport() {
   window.postMessage({ type: 'dailies:stop' }, '*')
   run.stopped = true
   const open = run.boards.filter(b => !(b.error || (b.added != null && b.got >= b.added))).map(b => b.url)
+  run.halted = new Set(open) // pins of these boards that still turn up (already on their way) are turned away
+  GHOST.clear(); render()
   const have = (S.settings && S.settings.pinterest) || []
   try { await setSetting({ pinterest: have.filter(b => !open.includes(b.url)) }); await markUnfollowed(open) } catch { /* it stays followed: harmless */ }
   renderImpProgress()
@@ -7354,6 +7356,9 @@ async function followIgCollections(cols) {
 // item: { id, u: url, t: title, a: author, c: caption, n: note, g: tags, k: 'image' for a picture, img: base64 JPEG,
 //         media: 'image' | 'video' | 'gif' for pins, vid: base64 MP4 with vw, vh, dur, gif: base64 GIF }
 async function receiveSave(d) {
+  // a board you stopped: answered (so the extension forgets the pin) but not saved, even if it was already waiting its turn here
+  const halted = IMP.run && IMP.run.halted
+  if (d && d.k === 'pin' && d.again && halted && (halted.has(d.bu) || IMP.run.boards.some(b => halted.has(b.url) && b.label === d.board))) return { state: 'duplicate', ref: null, skipped: true }
   S.assets = S.assets || await S.assetsP
   await S.settingsReady // (a deleted pin must be known before the board sends it again)
   if (!S.settingsLoaded && (d.k === 'pin' || d.k === 'igsave')) return { state: 'later' } // settings didn't load: not now, the extension sends it again
