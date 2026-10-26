@@ -4948,7 +4948,7 @@ function inOrder(db) {
     S.loaded = true
     render()
     openInbox()
-    if (first) { $('#import-btn').hidden = !S.canWrite || !!window.DAILIES_DESKTOP; maybeWelcome(); startProjects() }
+    if (first) { $('#import-btn').hidden = !S.canWrite || !!window.DAILIES_DESKTOP; maybeWelcome(); startProjects(); setTimeout(thumbBackfill, 12000) }
     if (projectsOn()) renderProjects()
     if (S.detail) refreshDetail()
     if (notesOn()) { decorateRefs(); if ($('#notes-view').classList.contains('lib-open')) renderNtLib() }
@@ -5171,7 +5171,7 @@ function renderBoards() {
   sec.classList.toggle('still', !fresh) // cards only fade in when the row first opens, not when you pick a board
   $('#boards-row').innerHTML = names.map((b, i) => {
     const p = pics(b)
-    return `<div class="collbox" style="--i:${Math.min(i, 9)}"><button class="coll" type="button" data-board="${esc(b)}" aria-pressed="${S.board === b}"><span class="trio">${[0, 1, 2].map(i => p[i] ? `<img alt="" decoding="async" src="${esc(imgSrc(p[i].image))}"${focusAttr(p[i])}>` : '<i></i>').join('')}</span><b>${esc(b)}</b><small>${by[b].length} references</small></button>${S.canWrite ? `<button class="collmore more" type="button" data-boardmore="${esc(b)}" aria-label="Board options" aria-haspopup="menu"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg></button>` : ''}</div>`
+    return `<div class="collbox" style="--i:${Math.min(i, 9)}"><button class="coll" type="button" data-board="${esc(b)}" aria-pressed="${S.board === b}"><span class="trio">${[0, 1, 2].map(i => p[i] ? `<img alt="" decoding="async" src="${esc(wallSrc(p[i]))}"${focusAttr(p[i])}>` : '<i></i>').join('')}</span><b>${esc(b)}</b><small>${by[b].length} references</small></button>${S.canWrite ? `<button class="collmore more" type="button" data-boardmore="${esc(b)}" aria-label="Board options" aria-haspopup="menu"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg></button>` : ''}</div>`
   }).join('')
   requestAnimationFrame(boardsNav)
 }
@@ -5206,7 +5206,7 @@ function renderShelf() {
   shelf.dataset.sig = sig
   $('#shelf-row').innerHTML = tags.map(t => {
     const p = pics(t)
-    return `<button class="coll" type="button" data-tag="${esc(t)}"><span class="trio">${[0, 1, 2].map(i => p[i] ? `<img alt="" decoding="async" src="${esc(imgSrc(p[i].image))}"${focusAttr(p[i])}>` : '<i></i>').join('')}</span><b>#${esc(t)}</b><small>${by[t].length} references</small></button>`
+    return `<button class="coll" type="button" data-tag="${esc(t)}"><span class="trio">${[0, 1, 2].map(i => p[i] ? `<img alt="" decoding="async" src="${esc(wallSrc(p[i]))}"${focusAttr(p[i])}>` : '<i></i>').join('')}</span><b>#${esc(t)}</b><small>${by[t].length} references</small></button>`
   }).join('')
   requestAnimationFrame(shelfNav)
 }
@@ -5749,7 +5749,7 @@ function ytPic(r) {
   const short = /\/shorts\//.test(r.url)
   return { big: `https://i.ytimg.com/vi/${id}/${short ? 'oar2' : 'maxresdefault'}.jpg`, small: `https://i.ytimg.com/vi/${id}/mqdefault.jpg` }
 }
-const picOf = r => r.image ? imgSrc(r.image) : (ytPic(r) || {}).small || null // a stored picture, else YouTube's own small one
+const picOf = r => r.image ? wallSrc(r) : (ytPic(r) || {}).small || null // a stored picture, else YouTube's own small one
 const ytImg = (p, extra = '') => `<img alt="" ${extra} src="${esc(p.big)}" data-small="${esc(p.small)}" onerror="if(this.dataset.small){this.src=this.dataset.small;delete this.dataset.small}else this.remove()">`
 function buildCard(r) {
   const el = document.createElement('article')
@@ -5768,7 +5768,7 @@ function buildCard(r) {
   el.className = 'card' + (isNew(r) ? ' isnew' : '')
   const yp = ytPic(r)
   const pic = r.image
-    ? `<img alt="" loading="lazy" decoding="async" draggable="false" src="${esc(imgSrc(r.image))}"${focusAttr(r)}>`
+    ? `<img alt="" loading="lazy" decoding="async" draggable="false" src="${esc(wallSrc(r))}"${focusAttr(r)}>`
     : yp ? ytImg(yp, 'loading="lazy" decoding="async" draggable="false"')
     : `<div class="poster${r.preview === 'pending' && r.url ? ' coming' : ''}">${glyph(r.source)}<span class="code mono">${esc(r.url ? shortCode(r.url) : '')}</span></div>`
   const kind = r.kind && r.kind !== 'link' && r.kind !== 'pin' ? ` · ${KIND[r.kind]}` : ''
@@ -6285,7 +6285,7 @@ function deleteRef(r) {
   S.db.collection('refs').doc(id).delete().then(() => {
     S.handled && S.handled.delete(id)
     rememberRemoved([r])
-    const purge = setTimeout(() => { if (data.image && S.assets) S.assets.delete(data.image).catch(() => {}) }, 7000)
+    const purge = setTimeout(() => { if (S.assets) for (const a of [data.image, data.thumb]) if (a) S.assets.delete(a).catch(() => {}) }, 7000)
     toast('Deleted', { label: 'Undo', run: () => { clearTimeout(purge); rememberRemoved([r], false); (S.restored ||= new Set()).add(id); S.db.collection('refs').doc(id).set(data).then(() => toast('Restored')).catch(e => toast('Couldn’t restore: ' + e.message)) } })
   }).catch(e => toast('Couldn’t delete: ' + e.message))
 }
@@ -6597,8 +6597,8 @@ async function webPreviews() {
         if (d.author && !r.author) fields.author = d.author
         if (d.image) {
           const blob = await (await fetch(d.image)).blob()
-          const img = await uploadImage(blob)
-          Object.assign(fields, { image: img.image, imageW: img.imageW, imageH: img.imageH, preview: 'done' })
+          const img = await uploadImage(blob, { thumb: true })
+          Object.assign(fields, { image: img.image, imageW: img.imageW, imageH: img.imageH, thumb: img.thumb, preview: 'done' })
         }
         if (Object.keys(fields).length) await patch(r.id, fields)
       } catch { /* this one stays as it is; the extension may still fill it in */ }
@@ -6609,10 +6609,10 @@ async function attachPicture(id, blob, done = 'Picture added') {
   const r = byId(id)
   if (!r || !S.assets) return
   try {
-    const img = await uploadImage(blob)
-    const old = r.image
-    await patch(r.id, { image: img.image, imageW: img.imageW, imageH: img.imageH, preview: 'done' })
-    if (old) S.assets.delete(old).catch(() => {})
+    const img = await uploadImage(blob, { thumb: true })
+    const old = [r.image, r.thumb].filter(Boolean)
+    await patch(r.id, { image: img.image, imageW: img.imageW, imageH: img.imageH, thumb: img.thumb, preview: 'done' })
+    for (const a of old) S.assets.delete(a).catch(() => {})
     toast(done, { label: 'View', run: () => openDetail(id) })
   } catch (e) { toast(uploadError(e)) }
 }
@@ -6645,13 +6645,62 @@ async function shrink(blob) {
     return await new Promise(res => c.toBlob(b => res(b || blob), 'image/jpeg', 0.88))
   } catch { return blob }
 }
-async function uploadImage(blob) {
+// a reference's picture is stored as it came (a 736 px pin is 100–300 KB); the wall shows a 640 px WebP copy of it instead,
+// a quarter of the bytes, so a library opens fast on a new device and the storage allowance goes further
+const THUMB_W = 640
+async function makeThumb(blob, w, h) {
+  if (!w || !h || /^image\/(gif|webp)$/.test(blob.type)) return null // animated pictures stay whole
+  if (blob.size < 45e3 && w <= 900) return null // already small
+  try {
+    const bmp = await createImageBitmap(blob)
+    const scale = Math.min(1, THUMB_W / bmp.width)
+    const c = document.createElement('canvas')
+    c.width = Math.max(1, Math.round(bmp.width * scale)); c.height = Math.max(1, Math.round(bmp.height * scale))
+    c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height)
+    bmp.close && bmp.close()
+    let t = await new Promise(res => c.toBlob(res, 'image/webp', 0.8))
+    if (!t || t.type !== 'image/webp') t = await new Promise(res => c.toBlob(res, 'image/jpeg', 0.8)) // a browser that can't write WebP
+    if (!t || t.size >= blob.size * 0.8) return null // not worth a second file
+    const up = await S.assets.upload(t, { type: t.type })
+    return up.id
+  } catch { return null }
+}
+async function uploadImage(blob, { thumb = false } = {}) {
   const small = await shrink(blob)
   const type = /^image\/(png|jpeg|gif|webp)$/.test(small.type) ? small.type : 'image/jpeg'
   const { w, h } = await dims(small)
   const up = await S.assets.upload(small, { type })
-  return { image: up.id, imageW: w, imageH: h }
+  const out = { image: up.id, imageW: w, imageH: h }
+  if (thumb) out.thumb = await makeThumb(small, w, h) // null when the picture is small enough as it is (so an old thumb never outlives its picture)
+  return out
 }
+// the picture to show on the wall and in lists: the small copy when there is one
+const wallSrc = r => imgSrc(r.thumb || r.image)
+// pictures stored before thumbnails existed get one, a few at a time while the page is open and you're not doing anything
+// (`thumb` undefined = not looked at yet; null = small enough as it is; an id = the small copy)
+let thumbsBusy = false
+async function thumbBackfill() {
+  if (thumbsBusy || !S.canWrite || !S.assets || window.DAILIES_DESKTOP) return
+  thumbsBusy = true
+  try {
+    for (let n = 0; n < 400; n++) {
+      const r = S.refs.find(r => r.image && r.thumb === undefined && !r.gif && !(S.gone && S.gone.has(r.id)))
+      if (!r) break
+      if (typeof brainPause === 'function') await brainPause(); else await new Promise(res => setTimeout(res, 1500))
+      if (document.visibilityState !== 'visible') break
+      let thumb = null
+      try {
+        const blob = await (await fetch(imgSrc(r.image))).blob()
+        thumb = /^image\//.test(blob.type) ? await makeThumb(blob, r.imageW || 0, r.imageH || 0) : null
+      } catch { /* no picture to read: leave it as it is for now */ continue }
+      if (!byId(r.id)) { if (thumb) S.assets.delete(thumb).catch(() => {}); continue } // deleted meanwhile
+      // written without touching updatedAt: the card on screen keeps its picture (a thumbnail is not an edit); the small copy is used from the next render on
+      await S.db.collection('refs').doc(r.id).update({ thumb }).catch(() => { if (thumb) S.assets.delete(thumb).catch(() => {}) })
+      await new Promise(res => setTimeout(res, 250))
+    }
+  } finally { thumbsBusy = false }
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && S.loaded) setTimeout(thumbBackfill, 5000) })
 function uploadError(e) {
   const c = e && e.code
   if (c === 'unsupported_type') return 'That image type isn’t supported. Use JPG, PNG, WebP or GIF.'
@@ -6825,7 +6874,7 @@ async function saveRef({ url, note = '', tags = [], image = null, extra = null, 
   } else {
     ref = { url: null, key: null, source: 'note', kind: 'note', domain: '', title: note.split('\n')[0].slice(0, 140), author: '', caption: '', note, tags, image: null, imageW: null, imageH: null, via: 'web', slack: null, savedAt: now, updatedAt: now, preview: 'none' }
   }
-  if (pending) Object.assign(ref, await uploadImage(pending), { preview: url ? 'done' : 'none' })
+  if (pending) Object.assign(ref, await uploadImage(pending, { thumb: true }), { preview: url ? 'done' : 'none' })
   const id = newId('w')
   if (S.gone) S.gone.delete(id) // deleted earlier in this visit, saved again on purpose
   await S.db.collection('refs').doc(id).set(ref)
@@ -6938,7 +6987,7 @@ document.addEventListener('paste', e => {
 async function saveVideoFile(file) {
   if (file.size > 1024 * 1048576) throw new Error(`${file.name || 'That video'} is over 1 GB. Export a smaller copy.`)
   const { poster, vw, vh, dur } = await videoPoster(file)
-  const pic = await uploadImage(poster)
+  const pic = await uploadImage(poster, { thumb: true })
   if (file.size <= VIDEO_KEEP) {
     const up = await S.assets.upload(file, { type: file.type || 'video/mp4' })
     Object.assign(pic, { video: up.id, videoW: vw, videoH: vh, dur: dur || null })
@@ -7177,7 +7226,7 @@ async function applyPreview(res) {
   if (extra.media === r.media && !extra.video && !extra.gif) delete extra.media // nothing new: don't rewrite it every visit
   if (r.vidWant) extra.vidWant = false // the Mac app answered, with a video or without one
   if (res.pk && !r.pk && /^[0-9a-f]{32}$/.test(res.pk)) extra.pk = res.pk // a pin's picture key, so a deleted pin is recognised under any id
-  if (r.image && res.vthumb && res.img && S.assets && r.imageW > r.imageH) Object.assign(extra, await uploadImage(new Blob([b64bytes(res.img)], { type: 'image/jpeg' }))) // a Short: its vertical picture replaces the wide one with bars
+  if (r.image && res.vthumb && res.img && S.assets && r.imageW > r.imageH) Object.assign(extra, await uploadImage(new Blob([b64bytes(res.img)], { type: 'image/jpeg' }), { thumb: true })) // a Short: its vertical picture replaces the wide one with bars
   if (r.image) { // a picture already: keep it, fill in any words that are missing (an Instagram collection import)
     if (res.t && !r.title) extra.title = String(res.t).slice(0, 300)
     if (res.a && !r.author) extra.author = String(res.a).slice(0, 200)
@@ -7191,7 +7240,7 @@ async function applyPreview(res) {
   if (res.c && !r.caption) p.caption = String(res.c).slice(0, 2000)
   if (res.k === 'video' && r.kind === 'post') p.kind = 'video'
   S.assets = S.assets || await S.assetsP
-  if (res.img && S.assets) Object.assign(p, await uploadImage(new Blob([b64bytes(res.img)], { type: 'image/jpeg' })))
+  if (res.img && S.assets) Object.assign(p, await uploadImage(new Blob([b64bytes(res.img)], { type: 'image/jpeg' }), { thumb: true }))
   if (res.imgId) Object.assign(p, { image: res.imgId, imageW: +res.iw || null, imageH: +res.ih || null }) // stored by the Mac app
   if (!p.image && !p.title && !p.media && !p.scrub && !p.sl && !p.pk && !('vidWant' in p)) return // nothing found; leave it for "refresh Dailies previews"
   await patch(r.id, p)
@@ -7258,7 +7307,7 @@ async function receiveSave(d) {
   if (dup) {
     const p = { tags: [...new Set([...(dup.tags || []), ...tags])] }
     if (note && !(dup.note || '').includes(note)) p.note = [dup.note, note].filter(Boolean).join('\n\n')
-    if (!dup.image && image && S.assets) Object.assign(p, await uploadImage(image), { preview: 'done' })
+    if (!dup.image && image && S.assets) Object.assign(p, await uploadImage(image, { thumb: true }), { preview: 'done' })
     await patch(dup.id, p)
     toast('Already in Dailies. Note added.')
     return { state: 'duplicate', ref: dup.id }
@@ -7277,7 +7326,7 @@ async function receiveSave(d) {
     const at = d.at && !isNaN(new Date(d.at)) ? new Date(d.at).toISOString() : now
     Object.assign(ref, { via: 'instagram', board: String(d.board || '').slice(0, 120), savedAt: at, updatedAt: at })
   }
-  if (image && S.assets) Object.assign(ref, await uploadImage(image), { preview: 'done' })
+  if (image && S.assets) Object.assign(ref, await uploadImage(image, { thumb: true }), { preview: 'done' })
   Object.assign(ref, await mediaFields(d))
   if (window.DAILIES_DESKTOP && mayHaveVideo(ref, d)) ref.vidWant = true // the Mac app downloads its 720p video next
   // already stored but not on screen (an old save): keep it as it is, with its tags and notes, instead of writing over it
@@ -7732,7 +7781,7 @@ async function exportForMac() {
     const set = await snapOnce(S.db.doc('settings/main')).catch(() => null)
     if (set && set.exists) cols.settings = { main: set.data() }
     const ids = new Set(), add = v => { if (typeof v === 'string' && v && !/^(https?:|data:)/.test(v)) ids.add(v) }
-    for (const r of Object.values(cols.refs)) { add(r.image); add(r.video); add(r.gif); if (r.scrub) add(r.scrub.id) }
+    for (const r of Object.values(cols.refs)) { add(r.image); add(r.thumb); add(r.video); add(r.gif); if (r.scrub) add(r.scrub.id) }
     for (const [k, items] of Object.entries(cols)) if (k.startsWith('canvases/')) for (const it of Object.values(items)) add(it.image)
     for (const n of Object.values(cols.notes)) for (const m of String(n.html || '').matchAll(/data-nimg="?([\w-]+)/g)) add(m[1])
     const files = [], manifest = { version: 1, exportedAt: new Date().toISOString(), assets: {} }
@@ -8421,7 +8470,7 @@ function checkMention() {
   placeAt(menu, Math.min(rc.left, innerWidth - mr.width - 12), rc.bottom + mr.height + 12 > innerHeight ? rc.top - mr.height - 6 : rc.bottom + 6)
 }
 function renderMention() {
-  $('#nt-mention').innerHTML = MN.items.map((r, i) => `<button type="button" role="option" data-i="${i}" aria-selected="${i === MN.sel}">${r.image ? `<img alt="" src="${esc(imgSrc(r.image))}"${focusAttr(r)}>` : '<i></i>'}<span>${esc(headOf(r).slice(0, 70))}</span></button>`).join('')
+  $('#nt-mention').innerHTML = MN.items.map((r, i) => `<button type="button" role="option" data-i="${i}" aria-selected="${i === MN.sel}">${r.image ? `<img alt="" src="${esc(wallSrc(r))}"${focusAttr(r)}>` : '<i></i>'}<span>${esc(headOf(r).slice(0, 70))}</span></button>`).join('')
 }
 function pickMention(i) {
   const r = MN.items[i]; if (!r || !MN.range) return
@@ -8497,7 +8546,7 @@ function renderNtLib() {
     if (sig === NL.sig) return
     NL.sig = sig
     body.innerHTML = list.length
-      ? `<div class="nl-grid">${list.map(r => `<button type="button" class="nl-ref" draggable="true" data-ref="${esc(r.id)}" title="${esc(headOf(r).slice(0, 120))}" style="aspect-ratio:${(1 / ratio(r)).toFixed(3)}">${r.image ? `<img alt="" loading="lazy" decoding="async" draggable="false" src="${esc(imgSrc(r.image))}"${focusAttr(r)}>` : `<div class="poster">${glyph(r.source)}</div>`}<span>${esc(headOf(r).slice(0, 70))}</span></button>`).join('')}</div>${all.length > list.length ? '<button type="button" class="btn nl-more" data-nlmore>Show more</button>' : ''}`
+      ? `<div class="nl-grid">${list.map(r => `<button type="button" class="nl-ref" draggable="true" data-ref="${esc(r.id)}" title="${esc(headOf(r).slice(0, 120))}" style="aspect-ratio:${(1 / ratio(r)).toFixed(3)}">${r.image ? `<img alt="" loading="lazy" decoding="async" draggable="false" src="${esc(wallSrc(r))}"${focusAttr(r)}>` : `<div class="poster">${glyph(r.source)}</div>`}<span>${esc(headOf(r).slice(0, 70))}</span></button>`).join('')}</div>${all.length > list.length ? '<button type="button" class="btn nl-more" data-nlmore>Show more</button>' : ''}`
       : '<p class="nl-empty">No references match.</p>'
   } else {
     const list = CV.list
@@ -8911,7 +8960,7 @@ function renderSites() {
   const head = `<div class="st-head"><b>Websites</b><span>${list.length} saved${terms.length ? ' matching your search' : ''}</span></div>`
   wrap.innerHTML = head + (list.length ? list.map((r, i) => {
     const d = String(r.caption || '').replace(/\s+/g, ' ').slice(0, 160)
-    return `<article class="site${first ? ' enter' : ''}" data-id="${esc(r.id)}" style="--d:${Math.min(i, 20) * 45}ms"><div class="im">${r.image ? `<img alt="" loading="lazy" decoding="async" src="${esc(imgSrc(r.image))}">` : `<div class="ph">${glyph('web')}<span>${esc(r.domain || '')}</span></div>`}${srcBtn(r)}${S.canWrite ? MORE : ''}</div><div class="tx"><b>${esc(titleOf(r))}</b>${d ? `<p>${esc(d)}</p>` : ''}<span class="dm">${esc(r.domain || hostOf(r.url || ''))}</span></div></article>`
+    return `<article class="site${first ? ' enter' : ''}" data-id="${esc(r.id)}" style="--d:${Math.min(i, 20) * 45}ms"><div class="im">${r.image ? `<img alt="" loading="lazy" decoding="async" src="${esc(wallSrc(r))}">` : `<div class="ph">${glyph('web')}<span>${esc(r.domain || '')}</span></div>`}${srcBtn(r)}${S.canWrite ? MORE : ''}</div><div class="tx"><b>${esc(titleOf(r))}</b>${d ? `<p>${esc(d)}</p>` : ''}<span class="dm">${esc(r.domain || hostOf(r.url || ''))}</span></div></article>`
   }).join('') : `<div class="st-empty"><b>${terms.length ? 'No websites match' : 'No websites yet'}</b>${terms.length ? 'Try other words.' : 'Press Save and paste a website link. It lands here with its picture, title and description.'}</div>`)
 }
 $('#st-wrap').addEventListener('click', e => {
@@ -11471,7 +11520,7 @@ function fillLooks(r) {
   }
   const sims = S.refs.filter(x => x.id !== r.id && x.image).map(x => [x, similarity(r, x)]).filter(x => x[1] > .12).sort((a, b) => b[1] - a[1]).slice(0, 6)
   $('#d-sim-wrap').hidden = !sims.length
-  $('#d-sim').innerHTML = sims.map(([x]) => `<button type="button" data-id="${esc(x.id)}" title="${esc(titleOf(x).slice(0, 80))}"><img alt="" loading="lazy" src="${esc(imgSrc(x.image))}"${focusAttr(x)}></button>`).join('')
+  $('#d-sim').innerHTML = sims.map(([x]) => `<button type="button" data-id="${esc(x.id)}" title="${esc(titleOf(x).slice(0, 80))}"><img alt="" loading="lazy" src="${esc(wallSrc(x))}"${focusAttr(x)}></button>`).join('')
 }
 $('#d-keys').addEventListener('click', e => { const b = e.target.closest('[data-k]'); if (!b) return; closeTop(); $('#q').value = b.dataset.k; S.q = b.dataset.k; S.smart = null; S.similar = null; render() })
 $('#d-sim').addEventListener('click', e => { const b = e.target.closest('[data-id]'); if (!b) return; flushNote(); S.detail = b.dataset.id; fillDetail(byId(b.dataset.id)) })
@@ -11529,7 +11578,7 @@ function renderDupes() {
   $('#dup-list').innerHTML = DUP.groups.map((g, i) => `<div class="dup-g">${g.map((r, j) => {
     const rm = j !== DUP.pick[i], when = r.savedAt ? new Date(r.savedAt) : null
     const meta = [when && !isNaN(when) ? when.toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) : '', (r.domain || r.source || '').replace(/^www\./, '').replace(/\.com$/, '')].filter(Boolean).join(' · ')
-    return `<button type="button" class="dup-t${rm ? ' rm' : ''}" data-g="${i}" data-j="${j}" title="${esc(titleOf(r).slice(0, 90))}"><span class="dup-pic">${r.image ? `<img alt="" loading="lazy" src="${esc(imgSrc(r.image))}"${focusAttr(r)}>` : `<i>${esc(shortTitle(r))}</i>`}<span class="dup-chip">${rm ? 'Remove' : 'Keep'}</span></span><span class="dup-meta">${esc(meta)}</span></button>`
+    return `<button type="button" class="dup-t${rm ? ' rm' : ''}" data-g="${i}" data-j="${j}" title="${esc(titleOf(r).slice(0, 90))}"><span class="dup-pic">${r.image ? `<img alt="" loading="lazy" src="${esc(wallSrc(r))}"${focusAttr(r)}>` : `<i>${esc(shortTitle(r))}</i>`}<span class="dup-chip">${rm ? 'Remove' : 'Keep'}</span></span><span class="dup-meta">${esc(meta)}</span></button>`
   }).join('')}</div>`).join('')
   $('#dup-go').textContent = `Remove ${n}`
 }
@@ -11710,7 +11759,7 @@ function renderTagHead() {
   $('#th-kicker').textContent = shown !== refs.length ? `#${t} · ${shown} of ${refs.length} references` : `#${t} · ${refs.length} reference${refs.length === 1 ? '' : 's'}`
   const pics = refs.filter(r => r.image).slice(0, 3)
   const sig = t + pics.map(r => r.image).join()
-  if ($('#th-fan').dataset.sig !== sig) { $('#th-fan').dataset.sig = sig; $('#th-fan').innerHTML = pics.map(r => `<img alt="" src="${esc(imgSrc(r.image))}"${focusAttr(r)}>`).join('') }
+  if ($('#th-fan').dataset.sig !== sig) { $('#th-fan').dataset.sig = sig; $('#th-fan').innerHTML = pics.map(r => `<img alt="" src="${esc(wallSrc(r))}"${focusAttr(r)}>`).join('') }
   // the card takes a soft tint from the most colourful colour across its pictures
   const w = {}
   for (const r of refs) for (const p of r.pal || []) {
@@ -11793,7 +11842,7 @@ async function deleteRefsBulk(refs, tagToo) {
   // the stored files go a little later, so Undo can still bring everything back
   const purge = setTimeout(() => {
     if (!S.assets) return
-    for (const [, d] of saved) for (const a of [d.image, d.video, d.gif, d.scrub && d.scrub.id]) if (a) S.assets.delete(a).catch(() => {})
+    for (const [, d] of saved) for (const a of [d.image, d.thumb, d.video, d.gif, d.scrub && d.scrub.id]) if (a) S.assets.delete(a).catch(() => {})
   }, 10000)
   toast(`Deleted ${saved.length} reference${saved.length === 1 ? '' : 's'}${tagToo ? ` and #${tagToo}` : ''}`, { label: 'Undo', ms: saved.length >= 10 ? 12000 : 7000, run: async () => {
     clearTimeout(purge)
@@ -12039,7 +12088,7 @@ function renderRediscover() {
   const sig = pick.map(r => r.id + r.image).join()
   if (sig === sec.dataset.sig) return
   sec.dataset.sig = sig
-  $('#redis-row').innerHTML = pick.map(r => `<button type="button" class="rcard" data-id="${esc(r.id)}" title="${esc(headOf(r).slice(0, 90))}"><img alt="" loading="lazy" decoding="async" src="${esc(imgSrc(r.image))}"${focusAttr(r)}><em>${esc(ago(r.savedAt))}</em></button>`).join('')
+  $('#redis-row').innerHTML = pick.map(r => `<button type="button" class="rcard" data-id="${esc(r.id)}" title="${esc(headOf(r).slice(0, 90))}"><img alt="" loading="lazy" decoding="async" src="${esc(wallSrc(r))}"${focusAttr(r)}><em>${esc(ago(r.savedAt))}</em></button>`).join('')
 }
 $('#redis-row').addEventListener('click', e => { const b = e.target.closest('[data-id]'); if (b) openDetail(b.dataset.id) })
 $('#redis-more').onclick = () => { redisTurn++; renderRediscover() }
