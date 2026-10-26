@@ -1010,10 +1010,9 @@ body.sites-mode .row1 { padding-bottom: 12px; }
 .site.sc .more, .site.sc .src { top: 14px; }
 .st-head { flex-wrap: wrap; align-items: center; row-gap: 10px; }
 .st-filt { display: inline-flex; align-items: center; gap: 8px; margin-left: auto; flex-wrap: wrap; }
-.st-fav { display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--line); background: none; color: var(--muted); font-size: 13px; cursor: pointer; }
-.st-fav svg { width: 15px; height: 15px; fill: none; }
-.st-fav .n { color: var(--faint); font-size: 12px; }
-.st-fav[aria-pressed="true"] { background: var(--text); color: var(--bg); border-color: var(--text); } .st-fav[aria-pressed="true"] svg { fill: currentColor; } .st-fav[aria-pressed="true"] .n { color: inherit; opacity: .6; }
+.st-cats .st-fav { display: inline-flex; align-items: center; gap: 6px; }
+.st-cats .st-fav svg { width: 14px; height: 14px; fill: none; }
+.st-cats .st-fav[aria-pressed="true"] { background: #ff4f6d; color: #fff; } .st-cats .st-fav[aria-pressed="true"] svg { fill: currentColor; } .st-cats .st-fav[aria-pressed="true"] .n { color: inherit; opacity: .75; }
 .st-price { display: inline-flex; gap: 2px; padding: 3px; border-radius: 999px; border: 1px solid var(--line); }
 .st-price button { height: 28px; padding: 0 12px; border: 0; border-radius: 999px; background: none; color: var(--muted); font-size: 13px; cursor: pointer; }
 .st-price button[aria-pressed="true"] { background: var(--surface-3); color: var(--text); }
@@ -1027,7 +1026,7 @@ body.sites-mode .row1 { padding-bottom: 12px; }
 .sc-star { position: absolute; top: 12px; right: 12px; z-index: 2; width: 32px; height: 32px; border-radius: 999px; border: 0; background: none; color: var(--faint); display: grid; place-items: center; cursor: pointer; transition: color .15s, transform .15s; }
 .sc-star svg { width: 19px; height: 19px; fill: none; }
 .sc-star:hover { color: var(--text); }
-.sc-star.on { color: #f5c04a; } .sc-star.on svg { fill: currentColor; }
+.sc-star.on { color: #ff4f6d; } .sc-star.on svg { fill: currentColor; }
 .sc-star:active { transform: scale(.85); }
 .site.sc:not(.lib) .sc-star { right: 46px; }
 .site.sc .sc-top { padding-right: 76px; } .site.sc.lib .sc-top { padding-right: 40px; }
@@ -9264,20 +9263,19 @@ function renderSites() {
   wrap.classList.add('logos')
   const first = wrap.dataset.shown !== '1'; wrap.dataset.shown = '1'
   const head = `<div class="st-head"><b>Websites</b><span>${list.length}${favOnly ? ' favourites' : ' sites'}</span>
-    <div class="st-filt"><button type="button" class="st-fav" data-sitefav aria-pressed="${favOnly}">${STAR_IC}Favourites <span class="n">${favCount}</span></button>
-    <div class="st-price" role="group" aria-label="Price">${[['', 'Any price'], ['free', 'Free'], ['paid', 'Paid']].map(([k, l]) => `<button type="button" data-siteprice="${k}" aria-pressed="${(price || '') === k}">${l}</button>`).join('')}</div></div>
+    <div class="st-filt"><div class="st-price" role="group" aria-label="Price">${[['', 'Any price'], ['free', 'Free'], ['paid', 'Paid']].map(([k, l]) => `<button type="button" data-siteprice="${k}" aria-pressed="${(price || '') === k}">${l}</button>`).join('')}</div></div>
     ${S.canWrite && pick && pick.startsWith('c-') ? '<button class="linkbtn" type="button" data-sitecat-del>Remove this category</button>' : ''}</div>`
-  const chips = `<nav class="st-cats" aria-label="Website categories"><button class="tab" type="button" data-sitecat="" aria-pressed="${!pick}">All <span class="n">${all.length}</span></button>${shownCats.map(([k, l]) => `<button class="tab" type="button" data-sitecat="${esc(k)}" aria-pressed="${pick === k}">${esc(l)} <span class="n">${counts[k] || 0}</span></button>`).join('')}${S.canWrite ? '<button class="tab st-add" type="button" data-sitecat-add>+ Add</button>' : ''}</nav>`
+  const chips = `<nav class="st-cats" aria-label="Website categories"><button class="tab" type="button" data-sitecat="" data-siteall aria-pressed="${!pick && !favOnly}">All <span class="n">${favOnly ? base.filter(r => priced(r) && terms.every(t => hay(r).includes(t))).length : all.length}</span></button><button class="tab st-fav" type="button" data-sitefav aria-pressed="${favOnly}">${HEART_IC}Favourites <span class="n">${favCount}</span></button>${shownCats.map(([k, l]) => `<button class="tab" type="button" data-sitecat="${esc(k)}" aria-pressed="${pick === k}">${esc(l)} <span class="n">${counts[k] || 0}</span></button>`).join('')}${S.canWrite ? '<button class="tab st-add" type="button" data-sitecat-add>+ Add</button>' : ''}</nav>`
   const card = (r, i) => {
     const name = nameOf(r), about = siteAbout(r), pr = priceOf(r), fav = isFav(r)
-    const star = S.canWrite ? `<button class="sc-star${fav ? ' on' : ''}" type="button" data-sitestar="${esc(r.id)}" aria-pressed="${fav}" aria-label="${fav ? 'Remove from favourites' : 'Add to favourites'}" title="${fav ? 'Remove from favourites' : 'Add to favourites'}">${STAR_IC}</button>` : ''
+    const star = S.canWrite ? `<button class="sc-star${fav ? ' on' : ''}" type="button" data-sitestar="${esc(r.id)}" aria-pressed="${fav}" aria-label="${fav ? 'Remove from favourites' : 'Add to favourites'}" title="${fav ? 'Remove from favourites' : 'Add to favourites'}">${HEART_IC}</button>` : ''
     return `<article class="site sc${first ? ' enter' : ''}${r.lib ? ' lib' : ''}" data-id="${esc(r.id)}" data-url="${esc(r.url || '')}" style="--d:${Math.min(i, 20) * 30}ms">${star}${!r.lib && S.canWrite ? MORE : ''}<div class="sc-top"><span class="sc-logo"><b class="sc-l">${esc((name[0] || '?').toUpperCase())}</b><img alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" src="${esc(siteLogo(r))}" onload="if(this.naturalWidth<32)this.remove()" onerror="this.remove()"></span><div class="sc-n"><b>${esc(name)}</b><span class="sc-sub"><i class="sc-dm">${esc(r.domain || siteHost(r))}</i>${pr ? `<em class="sc-pr ${pr}">${PRICE_LABEL[pr]}</em>` : ''}</span></div></div><p class="sc-d${about ? '' : ' none'}">${esc(about || 'This site doesn’t describe itself.')}</p></article>`
   }
   const empty = favOnly && !favCount ? '<div class="st-empty"><b>No favourites yet</b>Tap the star on any website to keep it here.</div>'
     : `<div class="st-empty"><b>Nothing here${price ? ' at that price' : ''}</b>${pick && pick.startsWith('c-') ? 'Open a website’s ⋯ menu and choose Categories to put it here.' : 'Try other words, another category or another price.'}</div>`
   wrap.innerHTML = head + chips + (list.length ? list.map(card).join('') : empty)
 }
-const STAR_IC = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3.6 2.6 5.3 5.8.8-4.2 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.2-4.1 5.8-.8z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>'
+const HEART_IC = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.2s-7.6-4.6-7.6-10.3A4.4 4.4 0 0 1 12 7.1a4.4 4.4 0 0 1 7.6 2.8c0 5.7-7.6 10.3-7.6 10.3z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>'
 // a site you saved is a favourite unless you unstarred it; a library site is a favourite once starred (starring saves it)
 const isFav = r => !r.lib && r.fav !== false
 // the name on a card: a library site's own name, else the cleaned-up page title
@@ -9465,6 +9463,7 @@ $('#st-wrap').addEventListener('click', async e => {
     return
   }
   const chip = e.target.closest('[data-sitecat]')
+  if (chip && chip.hasAttribute('data-siteall') && S.siteFav) { S.siteFav = false; lsSet('dailies.sitefav', false) } // All: everything, favourites off
   if (chip) { S.siteCat = chip.dataset.sitecat || null; lsSet('dailies.sitecat', S.siteCat || ''); redrawSites(); return }
   if (e.target.closest('[data-sitecat-del]')) {
     const k = S.siteCat, label = siteCatLabel(k)
