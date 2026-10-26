@@ -4857,7 +4857,8 @@ function busyWhy() {
 let busyWas = ''
 setInterval(() => {
   const w = busyWhy(), bar = $('#busybar'); if (!bar) return
-  bar.hidden = !w.length
+  // not while pins are coming in: the import pill and its progress already show that (Rohit, 26 Oct: no rays along the top while importing)
+  bar.hidden = !w.length || w.includes('import') || w.includes('boards')
   const key = w.join()
   if (key !== busyWas) { busyWas = key; if (!S.refs.length && S.loaded) render() } // the empty page says what is happening
 }, 400)
