@@ -993,6 +993,29 @@ body.sites-mode .row1 { padding-bottom: 12px; }
 .site:hover .more, .site:hover .src, .site:focus-within .more, .site:focus-within .src { opacity: 1; }
 .site .src { right: 44px; }
 @media (max-width: 760px) { .st-wrap { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; } .site .tx { padding: 9px 10px 11px; } .site .tx p { display: none; } .site .src { display: none; } .site .more { opacity: 1; } }
+/* websites are sources, not pictures: the site's logo, its name and what it is (Rohit, 26 Oct: a screenshot is often a login
+   page and says nothing) */
+.st-wrap.logos { grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); }
+.site.sc { padding: 16px 16px 16px; display: grid; gap: 12px; align-content: start; }
+.sc-top { display: flex; align-items: center; gap: 12px; min-width: 0; padding-right: 68px; }
+.sc-logo { flex: none; width: 46px; height: 46px; border-radius: 12px; background: #fff; display: grid; place-items: center; overflow: hidden; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .08); }
+.sc-logo > * { grid-area: 1 / 1; }
+.sc-logo img { width: 32px; height: 32px; object-fit: contain; background: #fff; }
+.sc-logo .sc-l { font: 700 20px/1 var(--ui); color: #16161a; }
+.sc-n { min-width: 0; display: grid; gap: 2px; }
+.sc-n b { font-size: 15.5px; font-weight: 600; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sc-n span { color: var(--faint); font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sc-d { margin: 0; color: var(--muted); font-size: 13.5px; line-height: 1.5; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
+.sc-d.none { color: var(--faint); font-style: italic; }
+.site.sc .more, .site.sc .src { top: 14px; }
+@media (max-width: 760px) {
+  .st-wrap.logos { grid-template-columns: 1fr; gap: 8px; }
+  .site.sc { padding: 12px 12px 13px; gap: 8px; }
+  .sc-top { padding-right: 36px; }
+  .sc-logo { width: 40px; height: 40px; border-radius: 10px; } .sc-logo img { width: 28px; height: 28px; }
+  .sc-d { -webkit-line-clamp: 2; font-size: 13px; }
+  .site.sc .more { top: 12px; }
+}
 body.projects-mode main, body.projects-mode .row2, body.projects-mode .searchwrap, body.projects-mode #shuffle-btn, body.projects-mode #typeslot, body.projects-mode #export-btn, body.projects-mode .tagdrawer { display: none !important; }
 body.projects-mode .row1 { padding-bottom: 12px; }
 body.projects-mode .top { border-bottom-color: var(--line-2); }
@@ -9193,15 +9216,36 @@ function renderSites() {
   const sig = list.map(r => r.id + (r.image || '') + (r.title || '') + catsOf.get(r.id).join()).join('|') + '#' + terms.join(' ') + '#' + pick + '#' + JSON.stringify(counts) + shownCats.map(c => c[1]).join()
   if (wrap.dataset.sig === sig && wrap.dataset.shown === '1') return
   wrap.dataset.sig = sig
+  wrap.classList.add('logos')
   const first = wrap.dataset.shown !== '1'; wrap.dataset.shown = '1'
   const head = `<div class="st-head"><b>Websites</b><span>${list.length} saved${terms.length ? ' matching your search' : ''}</span>${S.canWrite && pick && pick.startsWith('c-') ? '<button class="linkbtn" type="button" data-sitecat-del>Remove this category</button>' : ''}</div>`
   const chips = all.length || shownCats.length ? `<nav class="st-cats" aria-label="Website categories"><button class="tab" type="button" data-sitecat="" aria-pressed="${!pick}">All <span class="n">${all.length}</span></button>${shownCats.map(([k, l]) => `<button class="tab" type="button" data-sitecat="${esc(k)}" aria-pressed="${pick === k}">${esc(l)} <span class="n">${counts[k] || 0}</span></button>`).join('')}${S.canWrite ? '<button class="tab st-add" type="button" data-sitecat-add>+ Add</button>' : ''}</nav>` : ''
   const none = pick && !list.length ? `<div class="st-empty"><b>Nothing in ${esc(siteCatLabel(pick))} yet</b>Open a website’s ⋯ menu and choose Categories to put it here.</div>` : ''
   wrap.innerHTML = head + chips + none + (list.length || none ? list.map((r, i) => {
-    const d = String(r.caption || '').replace(/\s+/g, ' ').slice(0, 160)
-    return `<article class="site${first ? ' enter' : ''}" data-id="${esc(r.id)}" style="--d:${Math.min(i, 20) * 45}ms"><div class="im">${r.image ? `<img alt="" loading="lazy" decoding="async" src="${esc(wallSrc(r))}">` : `<div class="ph">${glyph('web')}<span>${esc(r.domain || '')}</span></div>`}${srcBtn(r)}${S.canWrite ? MORE : ''}</div><div class="tx"><b>${esc(titleOf(r))}</b>${d ? `<p>${esc(d)}</p>` : ''}<span class="dm">${esc(r.domain || hostOf(r.url || ''))}</span></div></article>`
+    const name = siteName(r), about = siteAbout(r)
+    return `<article class="site sc${first ? ' enter' : ''}" data-id="${esc(r.id)}" style="--d:${Math.min(i, 20) * 45}ms">${srcBtn(r)}${S.canWrite ? MORE : ''}<div class="sc-top"><span class="sc-logo"><b class="sc-l">${esc((name[0] || '?').toUpperCase())}</b><img alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" src="${esc(siteLogo(r))}" onload="if(this.naturalWidth<32)this.remove()" onerror="this.remove()"></span><div class="sc-n"><b>${esc(name)}</b><span>${esc(r.domain || siteHost(r))}</span></div></div><p class="sc-d${about ? '' : ' none'}">${esc(about || 'This site doesn’t describe itself. Open it to add a note.')}</p></article>`
   }).join('') : `<div class="st-empty"><b>${terms.length ? 'No websites match' : 'No websites yet'}</b>${terms.length ? 'Try other words.' : 'Press Save and paste a website link. It lands here with its picture, title and description.'}</div>`)
 }
+// the site's own name from its page title ("Beautiful Free Images & Pictures | Unsplash" is Unsplash): the part that names the
+// domain, else a short first part, else the domain itself
+function siteName(r) {
+  const host = siteHost(r), parts = host.split('.'), base = (parts.length > 2 && parts[parts.length - 2].length <= 3 ? parts[parts.length - 3] : parts[parts.length - 2] || parts[0] || '').toLowerCase()
+  const segs = String(r.title || '').split(/\s+[|·•—–-]\s+|:\s+/).map(x => x.trim()).filter(Boolean)
+  const squash = x => x.toLowerCase().replace(/[^a-z0-9]/g, '')
+  const hit = base && segs.find(x => squash(x).includes(base.replace(/[^a-z0-9]/g, '')))
+  if (hit && hit.length <= 40) return hit.replace(/[™®]/g, '').trim()
+  if (segs[0] && segs[0].length <= 28) return segs[0]
+  return base ? base[0].toUpperCase() + base.slice(1) : (r.domain || 'Website')
+}
+// what it is: its own description, else the rest of its title
+function siteAbout(r) {
+  const d = String(r.caption || r.note || '').replace(/\s+/g, ' ').trim()
+  if (d) return d.slice(0, 240)
+  const name = siteName(r), rest = String(r.title || '').split(/\s+[|·•—–-]\s+|:\s+/).map(x => x.trim()).filter(x => x && x !== name)
+  return rest.join(' · ').slice(0, 240)
+}
+// the logo the site gives browsers and search results, at the largest size there is (a tiny or missing one shows a letter instead)
+const siteLogo = r => `https://www.google.com/s2/favicons?domain=${encodeURIComponent(siteHost(r))}&sz=128`
 const redrawSites = () => { $('#st-wrap').dataset.sig = ''; renderSites() }
 $('#st-wrap').addEventListener('click', async e => {
   const chip = e.target.closest('[data-sitecat]')
