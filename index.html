@@ -969,6 +969,14 @@ body.sites-mode .row1 { padding-bottom: 12px; }
 .st-head { display: flex; align-items: baseline; gap: 10px; margin: 0 0 16px; } .st-head b { font-size: 20px; font-weight: 600; letter-spacing: -.01em; } .st-head span { color: var(--faint); font-size: 14px; }
 .st-wrap { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 16px; }
 .st-wrap .st-head, .st-wrap .st-empty { grid-column: 1 / -1; }
+.st-cats { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; margin: -4px 0 6px; }
+.st-cats .st-add { color: var(--faint); }
+.st-cats .st-addin { height: 34px; width: 170px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--line-2); background: var(--surface-2); color: var(--text); outline: none; }
+.st-head .linkbtn { margin-left: auto; }
+.menu .mc-h { padding: 6px 10px 4px; color: var(--faint); font-size: 12px; }
+.menu button[data-sitecat-tog] { display: flex; align-items: center; gap: 9px; }
+.menu button[data-sitecat-tog] i { flex: none; width: 15px; height: 15px; border-radius: 4px; border: 1.5px solid var(--line-2); display: grid; place-items: center; font-style: normal; font-size: 10px; line-height: 1; }
+.menu button[data-sitecat-tog][aria-checked="true"] i { background: var(--text); border-color: var(--text); color: var(--bg); }
 .st-empty { padding: 60px 0; color: var(--muted); font-size: 15px; line-height: 1.6; max-width: 460px; } .st-empty b { display: block; color: var(--text); font-size: 18px; margin-bottom: 6px; }
 .site { position: relative; border-radius: 14px; background: var(--surface); border: 1px solid var(--line); overflow: hidden; cursor: pointer; transition: transform .2s cubic-bezier(.2, .8, .2, 1), border-color .2s; }
 .site:hover { transform: translateY(-2px); border-color: var(--line-2); }
@@ -1921,6 +1929,8 @@ body.notes-mode .top { border-bottom-color: var(--line-2); }
 .cv-selbar[hidden] { display: none; }
 .cv-selbar button { flex: none; height: 34px; padding: 0 12px 0 10px; border: 0; border-radius: 8px; background: none; color: var(--text); cursor: pointer; font: 500 13px/1 var(--ui); display: flex; align-items: center; gap: 7px; }
 .cv-selbar button:hover { background: color-mix(in srgb, var(--danger) 16%, transparent); color: var(--danger); }
+.cv-selbar button.plain:hover { background: var(--surface-3); color: var(--text); }
+.cv-selbar button[hidden] { display: none; }
 .cv-selbar svg { width: 17px; height: 17px; }
 .cv-fmt button { flex: none; height: 30px; min-width: 30px; padding: 0 7px; border: 0; border-radius: 8px; background: none; color: var(--muted); cursor: pointer; font: 500 13px/1 var(--ui); display: grid; place-items: center; }
 .cv-fmt button:hover { color: var(--text); background: var(--surface-2); }
@@ -2554,6 +2564,7 @@ input, textarea, select, .field { transition: border-color .18s ease, box-shadow
         <a class="btn primary" id="d-open" target="_blank" rel="noopener noreferrer"></a>
         <button class="btn" id="d-copy" type="button">Copy link</button>
         <button class="btn" id="d-dl" type="button" hidden>Download</button>
+        <button class="btn" id="d-copyimg" type="button" hidden>Copy image</button>
         <button class="btn" id="d-prompt" type="button" hidden title="A short description of this reference you can paste into an AI image or video tool">Copy as prompt</button>
         <button class="btn" id="d-tonote" type="button" hidden>Add to note</button>
         <button class="btn" id="d-tocv" type="button" hidden>Add to canvas</button>
@@ -2724,6 +2735,8 @@ input, textarea, select, .field { transition: border-color .18s ease, box-shadow
     <button type="button" data-fmt="delete" class="fmt-del" title="Delete this text (Delete key)" aria-label="Delete this text"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V8H6v11zM18 5h-2.5l-1-1h-5l-1 1H6v2h12V5z"/></svg></button>
   </div>
   <div class="cv-selbar" id="cv-sel" role="toolbar" aria-label="Selected item" hidden>
+    <button type="button" id="cv-sel-copy" class="plain" title="Copy the picture, to paste it anywhere" hidden><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg><span>Copy</span></button>
+    <button type="button" id="cv-sel-dl" class="plain" title="Download the file" hidden><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11m-5-5 5 5 5-5M5 20h14"/></svg><span>Download</span></button>
     <button type="button" id="cv-sel-del" title="Delete (Delete key)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V8H6v11zM18 5h-2.5l-1-1h-5l-1 1H6v2h12V5z"/></svg><span>Delete</span></button>
   </div>
   <div class="fmt-fonts" id="fmt-fonts" role="menu" aria-label="Fonts" hidden></div>
@@ -4191,7 +4204,9 @@ const tabGlyph = k => { if (k === 'note') return NOTE_IC; const s = info(k); ret
 // Stills: film and ad frames, stock pictures and GIFs. Anything from a still / stock / GIF site (EyeCandy, Frameset, Pexels, Unsplash…), plus single images right-click-saved from any other website
 const STILL_HOSTS = /(^|\.)(shotdeck\.com|film-grab\.com|eyecannndy\.com|eyecandy\.[a-z.]+|frameset\.app|pexels\.com|unsplash\.com|giphy\.com|tenor\.com|pixabay\.com|flim\.ai|shot\.cafe|moviestillsdb\.com|screenmusings\.org|cinematographydb\.com|filmstills\.co|kinoframes\.com|framelines\.com)$/i
 const STILL_SKIP = ['instagram', 'pinterest', 'twitter', 'tiktok', 'youtube', 'vimeo', 'behance', 'dribbble', 'threads']
-const isStill = r => !!r && (r.still === true || STILL_HOSTS.test(r.domain || '') || (r.kind === 'image' && r.via === 'extension' && !STILL_SKIP.includes(r.source)))
+// a stills site's own front page (unsplash.com, pexels.com) is a website you keep; a single photo or film still from it is a still
+const sitePage = r => { try { const u = new URL(r.url); return /^\/?$/.test(u.pathname) && !u.search } catch { return false } }
+const isStill = r => !!r && (r.still === true || (STILL_HOSTS.test(r.domain || '') && !sitePage(r)) || (r.kind === 'image' && r.via === 'extension' && !STILL_SKIP.includes(r.source)))
 // a still site's tab title, without the site's name: "Her (2013) | FILMGRAB" → "Her (2013)"
 const stillTitle = (t, host) => STILL_HOSTS.test(host || '') ? t.replace(/\s*[|·•\-–—]\s*(shotdeck|film-?grab|eyecannndy|frameset|flim|shot\.?cafe|movie ?stills ?db|screen ?musings)\b.*$/i, '').trim() || t : t
 const STILL_IC = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2.4" fill="none" stroke="currentColor" stroke-width="2"/><rect x="7.2" y="8.2" width="9.6" height="7.6" rx="1" fill="none" stroke="currentColor" stroke-width="2"/></svg>' // a picture frame
@@ -5893,7 +5908,15 @@ $('#grid').addEventListener('pointerdown', e => {
 })
 $('#grid').addEventListener('pointermove', e => { if (lp && !lp.fired && Math.hypot(e.clientX - lp.x, e.clientY - lp.y) > 9) { clearTimeout(lp.t); lp = null } })
 for (const ev of ['pointerup', 'pointercancel']) $('#grid').addEventListener(ev, () => { if (lp) { clearTimeout(lp.t); if (lp.fired) S.lpJustFired = true; lp = null } })
-$('#grid').addEventListener('contextmenu', e => { if (isTouch()) e.preventDefault() })
+$('#grid').addEventListener('contextmenu', e => {
+  if (isTouch()) { e.preventDefault(); return }
+  // right-click a card: its menu (Copy image, Download…) right where you clicked. The picture sits under the card's hover layer
+  // and buttons, so the browser's own "Copy Image" never showed. A right-click on the ↗ link keeps the browser's menu
+  const c = e.target.closest('.card')
+  if (!c || e.target.closest('a[href], [data-more]') || S.sel.size) return
+  e.preventDefault()
+  openMenu(c.dataset.id, c.querySelector('[data-more]') || c, { x: e.clientX, y: e.clientY })
+})
 S.sel = new Set()
 let lastPick = null
 const selRefs = () => [...S.sel].map(byId).filter(Boolean)
@@ -6166,7 +6189,7 @@ $('#grid').addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.
 
 // ------------------------------------------------------------------ card menu (⋯)
 let menuFor = null
-function openMenu(id, anchor) {
+function openMenu(id, anchor, at = null) {
   const r = byId(id), menu = $('#cardmenu')
   if (!r) return
   if (menuFor === id) return closeMenu()
@@ -6174,15 +6197,19 @@ function openMenu(id, anchor) {
   menuFor = id
   anchor.setAttribute('aria-expanded', 'true')
   menu.innerHTML = `
-    <button type="button" role="menuitem" data-act="rename">${r.kind === 'note' ? 'Edit note' : 'Rename'}</button>
-    ${S.canWrite ? '<button type="button" role="menuitem" data-act="project">Add to project…</button>' : ''}
+    ${S.canWrite ? `<button type="button" role="menuitem" data-act="rename">${r.kind === 'note' ? 'Edit note' : 'Rename'}</button>
+    <button type="button" role="menuitem" data-act="project">Add to project…</button>
+    ${isSite(r) ? '<button type="button" role="menuitem" data-act="sitecats">Categories…</button>' : ''}` : ''}
     <button type="button" role="menuitem" data-act="similar">Find similar</button>
     ${r.url ? `<a role="menuitem" href="${esc(r.url)}" target="_blank" rel="noopener noreferrer" data-act="open">Open on ${esc(info(r.source).label === 'Web' ? r.domain || 'the web' : info(r.source).label)} ↗</a>
     <button type="button" role="menuitem" data-act="copy">Copy link</button>` : ''}
-    <button type="button" role="menuitem" class="danger" data-act="delete">Delete</button>`
+    ${r.image ? '<button type="button" role="menuitem" data-act="copyimg">Copy image</button>' : ''}
+    ${S.downloads && refMedia(r) ? `<button type="button" role="menuitem" data-act="download">Download ${refMedia(r).kind === 'video' ? 'video' : refMedia(r).kind === 'gif' ? 'GIF' : 'image'}</button>` : ''}
+    ${S.canWrite ? '<button type="button" role="menuitem" class="danger" data-act="delete">Delete</button>' : ''}`
   menu.hidden = false
   const a = anchor.getBoundingClientRect(), m = menu.getBoundingClientRect()
-  placeAt(menu, Math.max(8, Math.min(innerWidth - m.width - 8, a.right - m.width)), a.bottom + 6 + m.height > innerHeight ? a.top - m.height - 6 : a.bottom + 6)
+  if (at) placeAt(menu, Math.max(8, Math.min(innerWidth - m.width - 8, at.x)), at.y + m.height > innerHeight - 8 ? Math.max(8, at.y - m.height) : at.y)
+  else placeAt(menu, Math.max(8, Math.min(innerWidth - m.width - 8, a.right - m.width)), a.bottom + 6 + m.height > innerHeight ? a.top - m.height - 6 : a.bottom + 6)
   menu.querySelector('button, a').focus({ preventScroll: true })
 }
 // a board (or Instagram collection): stop following it, or remove it with its pins (they won't come back from the board)
@@ -6226,7 +6253,25 @@ function closeMenu() {
   document.querySelectorAll('.more[aria-expanded="true"]').forEach(b => b.setAttribute('aria-expanded', 'false'))
   menuFor = null
 }
+// a website's categories, ticked in the menu itself (it stays open, so several can be changed in a row)
+function siteCatsMenu(r) {
+  const menu = $('#cardmenu'), on = siteCatsOf(r)
+  menu.innerHTML = `<div class="mc-h">Categories for ${esc(r.domain || siteHost(r) || 'this site')}</div>` +
+    siteCatList().map(([k, l]) => `<button type="button" role="menuitemcheckbox" data-sitecat-tog="${esc(k)}" aria-checked="${on.includes(k)}"><i>${on.includes(k) ? '✓' : ''}</i>${esc(l)}</button>`).join('')
+}
 $('#cardmenu').addEventListener('click', async e => {
+  const tog = e.target.closest('[data-sitecat-tog]')
+  if (tog && menuFor) {
+    e.stopPropagation()
+    const r = byId(menuFor); if (!r) return
+    const k = tog.dataset.sitecatTog, cur = siteCatsOf(r).filter(x => x !== 'other')
+    const next = cur.includes(k) ? cur.filter(x => x !== k) : [...cur, k]
+    r.siteCats = next.length ? next : ['other'] // seen at once; the saved copy follows
+    siteCatsMenu(r)
+    await setSiteCats(r, next)
+    redrawSites()
+    return
+  }
   const item = e.target.closest('[data-act]')
   if (!item || !menuFor) return
   if (menuFor.startsWith('board:')) {
@@ -6254,12 +6299,15 @@ $('#cardmenu').addEventListener('click', async e => {
   if (act === 'open') { closeMenu(); return }
   if (act === 'rename') { closeMenu(); openRename(r); return }
   if (act === 'similar') { closeMenu(); showSimilar(r.id); return }
+  if (act === 'sitecats') { e.stopPropagation(); siteCatsMenu(r); return }
   if (act === 'project') { const a = (document.querySelector('.more[aria-expanded="true"]') || item).getBoundingClientRect(); closeMenu(); openProjMenu([r.id], a); return }
   if (act === 'copy') {
     closeMenu()
     try { await navigator.clipboard.writeText(r.url); toast('Link copied') } catch { toast('Couldn’t copy the link') }
     return
   }
+  if (act === 'copyimg') { closeMenu(); copyImage(imgSrc(r.image)); return }
+  if (act === 'download') { closeMenu(); downloadMedia(refMedia(r)); return }
   if (act === 'delete') {
     closeMenu()
     if (await askConfirm({ title: 'Delete this reference?', body: `“${shortTitle(r)}” will be removed from your library. You can undo it right after.` })) deleteRef(r)
@@ -9044,22 +9092,138 @@ function syncWebHint() {
 $('#webhint').addEventListener('click', e => { const b = e.target.closest('[data-hint]'); if (b) startWebSearch(b.dataset.hint, S.q) })
 // ---- the Websites page: every website you saved, with its preview
 const sitesOn = () => document.body.classList.contains('sites-mode')
+// ---- Websites: categories
+// Each website lands in one or more categories, worked out from its address and the words in its own title and description
+// (read when it was saved): Envato is Images & stock, Templates, Music & SFX and Fonts. Known sites come from the table;
+// anything else from its words; nothing clear means Other. Change them from the card's ⋯ menu: Dailies then remembers that
+// site's domain (settings.siteDomains) and every later save from it follows. Your own categories are settings.siteCatList.
+S.siteCat = lsGet('dailies.sitecat') || null
+const SITE_CATS = [['ads', 'Ads'], ['stock', 'Images & stock'], ['templates', 'Templates'], ['audio', 'Music & SFX'], ['fonts', 'Fonts'], ['tools', 'Tools'], ['inspiration', 'Inspiration'], ['learning', 'Learning']]
+const SITE_KNOWN = {
+  stock: 'unsplash.com pexels.com pixabay.com stocksy.com gettyimages.com istockphoto.com shutterstock.com depositphotos.com dreamstime.com 123rf.com rawpixel.com storyblocks.com pond5.com flaticon.com thenounproject.com iconscout.com icons8.com videvo.net mixkit.co coverr.co burst.shopify.com kaboompics.com stock.adobe.com freepik.com envato.com motionarray.com creativemarket.com artlist.io artgrid.io',
+  templates: 'envato.com motionarray.com creativemarket.com freepik.com stock.adobe.com mockupworld.co ls.graphics placeit.net lottiefiles.com uicolors.app framer.com/marketplace themeforest.net videohive.net ui8.net mixkit.co',
+  audio: 'envato.com motionarray.com artlist.io epidemicsound.com musicbed.com soundstripe.com uppbeat.io freesound.org zapsplat.com pixabay.com/music audiojungle.net soundsnap.com mixkit.co',
+  fonts: 'fonts.google.com fontshare.com myfonts.com dafont.com typewolf.com fontsinuse.com futurefonts.xyz fontsquirrel.com adobe.com/fonts fonts.adobe.com envato.com creativemarket.com pangrampangram.com',
+  ads: 'adsoftheworld.com foreplay.co swipefile.com adspy.com bigspy.com facebook.com/ads/library adstransparency.google.com ads.tiktok.com tiktok.com/business/creativecenter adforum.com theinspiration.com',
+  inspiration: 'behance.net dribbble.com awwwards.com mobbin.com land-book.com godly.website siteinspire.com savee.it cosmos.so httpster.net onepagelove.com lapa.ninja minimal.gallery saaslandingpage.com screenlane.com refero.design motionographer.com artofthetitle.com stashmedia.tv designspiration.com arena.are.na are.na dark.design shots.so',
+  tools: 'figma.com canva.com framer.com runwayml.com photopea.com remove.bg midjourney.com krea.ai spline.design rive.app coolors.co capcut.com descript.com invideo.io elevenlabs.io pika.art lumalabs.ai higgsfield.ai kling.ai ideogram.ai notion.so miro.com whimsical.com tldraw.com squoosh.app tinypng.com',
+  learning: 'skillshare.com udemy.com domestika.org coursera.org schoolofmotion.com motiondesign.school linkedin.com/learning masterclass.com',
+}
+const SITE_WORDS = {
+  ads: /\b(ad library|ads library|ad examples?|advertis\w*|swipe ?files?|ad creatives?|commercials?|winning ads|facebook ads|tiktok ads|ad inspiration|ad campaigns?|ads)\b/g,
+  stock: /\b(stock|royalty[- ]free|photos?|photograph\w*|images?|pictures?|footage|b-?roll|illustrations?|vectors?|icons?|3d models?|textures?|clip art)\b/g,
+  templates: /\b(templates?|mockups?|presets?|themes?|ui kits?|after effects|premiere pro|motion graphics|mogrts?|luts?|overlays?|psd|graphic assets)\b/g,
+  audio: /\b(music|sound effects?|sfx|audio|songs?|soundtracks?|royalty[- ]free tracks?|loops)\b/g,
+  fonts: /\b(fonts?|typefaces?|typography|type foundry|lettering)\b/g,
+  tools: /\b(tools?|generator|editor|software|text to (video|image|speech)|image to video|ai (video|image|art|voice)|remove backgrounds?|upscal\w*|convert\w*|prototyp\w*|whiteboard|compress\w*)\b/g,
+  inspiration: /\b(inspiration|inspir\w*|gallery|galleries|showcase|curated|awards?|examples|portfolios?|moodboards?|landing pages?|best (web|website|design)\w*|screens? from)\b/g,
+  learning: /\b(tutorials?|courses?|learn\w*|classes|lessons?|masterclass|academy|how to|workshops?)\b/g,
+}
+function siteHost(r) { return hostOf(r.url || '') || String(r.domain || '').replace(/^www\./, '').toLowerCase() }
+// the known table: a domain matches itself and its subdomains (elements.envato.com is envato.com); some entries carry a path
+function siteKnown(r) {
+  const host = siteHost(r)
+  if (!host) return null
+  let path = ''; try { path = new URL(r.url).pathname.toLowerCase() } catch { /* no path */ }
+  const out = []
+  for (const [k, list] of Object.entries(SITE_KNOWN)) for (const e of list.split(' ')) {
+    const [d, ...p] = e.split('/'), sub = p.length ? '/' + p.join('/') : ''
+    if ((host === d || host.endsWith('.' + d)) && (!sub || path.startsWith(sub))) { out.push(k); break }
+  }
+  // a path entry is more specific than the bare domain (facebook.com/ads/library is Ads, not "facebook")
+  return out.length ? out : null
+}
+function siteGuess(r) {
+  const text = [r.title, r.caption, r.ai && r.ai.t].filter(Boolean).join(' ').toLowerCase()
+  if (!text) return []
+  const score = Object.entries(SITE_WORDS).map(([k, re]) => [k, (text.match(re) || []).length]).filter(x => x[1]).sort((a, b) => b[1] - a[1])
+  if (!score.length) return []
+  const top = score[0][1]
+  return score.filter(x => x[1] >= Math.max(1, Math.ceil(top / 2))).slice(0, 3).map(x => x[0])
+}
+const siteCatList = () => [...SITE_CATS, ...(((S.settings && S.settings.siteCatList) || []).map(c => [c.k, c.label]))]
+const siteCatLabel = k => k === 'other' ? 'Other' : (siteCatList().find(c => c[0] === k) || [k, k])[1]
+// yours first (this site, then its domain), then the table, then its words
+function siteCatsOf(r) {
+  const valid = new Set(siteCatList().map(c => c[0]))
+  const clean = list => (list || []).filter(k => valid.has(k))
+  if (Array.isArray(r.siteCats) && clean(r.siteCats).length) return clean(r.siteCats)
+  const dom = S.settings && S.settings.siteDomains && S.settings.siteDomains[siteHost(r)]
+  if (clean(dom).length) return clean(dom)
+  const known = siteKnown(r)
+  if (known) return known
+  const g = siteGuess(r)
+  return g.length ? g : ['other']
+}
+// your fix for one site: kept on the site and remembered for its domain
+async function setSiteCats(r, cats) {
+  const list = cats.filter(k => k !== 'other')
+  const next = list.length ? list : ['other']
+  await patch(r.id, { siteCats: next })
+  const host = siteHost(r)
+  if (host) await setSetting({ siteDomains: { ...((S.settings && S.settings.siteDomains) || {}), [host]: next } }).catch(() => {})
+}
+async function addSiteCat(label) {
+  const name = String(label || '').trim().slice(0, 40)
+  if (!name) return null
+  const cur = (S.settings && S.settings.siteCatList) || []
+  const have = siteCatList().find(c => c[1].toLowerCase() === name.toLowerCase())
+  if (have) return have[0]
+  const k = 'c-' + Math.random().toString(36).slice(2, 8)
+  await setSetting({ siteCatList: [...cur, { k, label: name }] })
+  return k
+}
 function renderSites() {
   const wrap = $('#st-wrap'); if (!wrap) return
   const terms = S.q.toLowerCase().split(/\s+/).filter(Boolean)
   const hay = r => [r.title, r.caption, r.note, r.domain, r.author, (r.tags || []).join(' ')].join(' ').toLowerCase()
-  const list = S.refs.filter(r => isSite(r) && terms.every(t => hay(r).includes(t))).sort((a, b) => String(b.savedAt || '').localeCompare(String(a.savedAt || '')))
-  const sig = list.map(r => r.id + (r.image || '') + (r.title || '')).join('|') + '#' + terms.join(' ')
+  const all = S.refs.filter(r => isSite(r) && terms.every(t => hay(r).includes(t))).sort((a, b) => String(b.savedAt || '').localeCompare(String(a.savedAt || '')))
+  // categories: one or more per site, as chips with counts (Rohit picked the chips layout, 26 Oct)
+  const catsOf = new Map(all.map(r => [r.id, siteCatsOf(r)]))
+  const counts = {}
+  for (const cs of catsOf.values()) for (const k of cs) counts[k] = (counts[k] || 0) + 1
+  const cats = [...siteCatList(), ['other', 'Other']]
+  const pick = S.siteCat && cats.some(c => c[0] === S.siteCat) ? S.siteCat : null
+  const list = pick ? all.filter(r => catsOf.get(r.id).includes(pick)) : all
+  const shownCats = cats.filter(([k]) => counts[k] || k === pick || k.startsWith('c-'))
+  const sig = list.map(r => r.id + (r.image || '') + (r.title || '') + catsOf.get(r.id).join()).join('|') + '#' + terms.join(' ') + '#' + pick + '#' + JSON.stringify(counts) + shownCats.map(c => c[1]).join()
   if (wrap.dataset.sig === sig && wrap.dataset.shown === '1') return
   wrap.dataset.sig = sig
   const first = wrap.dataset.shown !== '1'; wrap.dataset.shown = '1'
-  const head = `<div class="st-head"><b>Websites</b><span>${list.length} saved${terms.length ? ' matching your search' : ''}</span></div>`
-  wrap.innerHTML = head + (list.length ? list.map((r, i) => {
+  const head = `<div class="st-head"><b>Websites</b><span>${list.length} saved${terms.length ? ' matching your search' : ''}</span>${S.canWrite && pick && pick.startsWith('c-') ? '<button class="linkbtn" type="button" data-sitecat-del>Remove this category</button>' : ''}</div>`
+  const chips = all.length || shownCats.length ? `<nav class="st-cats" aria-label="Website categories"><button class="tab" type="button" data-sitecat="" aria-pressed="${!pick}">All <span class="n">${all.length}</span></button>${shownCats.map(([k, l]) => `<button class="tab" type="button" data-sitecat="${esc(k)}" aria-pressed="${pick === k}">${esc(l)} <span class="n">${counts[k] || 0}</span></button>`).join('')}${S.canWrite ? '<button class="tab st-add" type="button" data-sitecat-add>+ Add</button>' : ''}</nav>` : ''
+  const none = pick && !list.length ? `<div class="st-empty"><b>Nothing in ${esc(siteCatLabel(pick))} yet</b>Open a website’s ⋯ menu and choose Categories to put it here.</div>` : ''
+  wrap.innerHTML = head + chips + none + (list.length || none ? list.map((r, i) => {
     const d = String(r.caption || '').replace(/\s+/g, ' ').slice(0, 160)
     return `<article class="site${first ? ' enter' : ''}" data-id="${esc(r.id)}" style="--d:${Math.min(i, 20) * 45}ms"><div class="im">${r.image ? `<img alt="" loading="lazy" decoding="async" src="${esc(wallSrc(r))}">` : `<div class="ph">${glyph('web')}<span>${esc(r.domain || '')}</span></div>`}${srcBtn(r)}${S.canWrite ? MORE : ''}</div><div class="tx"><b>${esc(titleOf(r))}</b>${d ? `<p>${esc(d)}</p>` : ''}<span class="dm">${esc(r.domain || hostOf(r.url || ''))}</span></div></article>`
   }).join('') : `<div class="st-empty"><b>${terms.length ? 'No websites match' : 'No websites yet'}</b>${terms.length ? 'Try other words.' : 'Press Save and paste a website link. It lands here with its picture, title and description.'}</div>`)
 }
-$('#st-wrap').addEventListener('click', e => {
+const redrawSites = () => { $('#st-wrap').dataset.sig = ''; renderSites() }
+$('#st-wrap').addEventListener('click', async e => {
+  const chip = e.target.closest('[data-sitecat]')
+  if (chip) { S.siteCat = chip.dataset.sitecat || null; lsSet('dailies.sitecat', S.siteCat || ''); redrawSites(); return }
+  if (e.target.closest('[data-sitecat-del]')) {
+    const k = S.siteCat, label = siteCatLabel(k)
+    if (!(await askConfirm({ title: `Remove the category “${label}”?`, body: 'The websites in it stay in your library.', yes: 'Remove' }))) return
+    await setSetting({ siteCatList: ((S.settings && S.settings.siteCatList) || []).filter(c => c.k !== k) })
+    S.siteCat = null; lsSet('dailies.sitecat', ''); redrawSites(); return
+  }
+  const add = e.target.closest('[data-sitecat-add]')
+  if (add) {
+    const inp = document.createElement('input')
+    inp.className = 'st-addin'; inp.placeholder = 'New category'; inp.maxLength = 40
+    add.replaceWith(inp); inp.focus()
+    let done = false
+    const finish = async save => {
+      if (done) return; done = true
+      const k = save ? await addSiteCat(inp.value) : null
+      if (k) { S.siteCat = k; lsSet('dailies.sitecat', k); toast(`Added “${siteCatLabel(k)}”. Put websites in it from their ⋯ menu.`) }
+      redrawSites()
+    }
+    inp.onkeydown = ev => { if (ev.key === 'Enter') finish(true); if (ev.key === 'Escape') finish(false) }
+    inp.onblur = () => finish(!!inp.value.trim())
+    return
+  }
   const c = e.target.closest('.site'); if (!c) return
   if (e.target.closest('[data-src]')) { e.stopPropagation(); return }
   const more = e.target.closest('[data-more]')
@@ -9657,6 +9821,9 @@ function placeSel() {
   if (!id) return
   const it = CV.items.get(id)
   $('#cv-sel-del span').textContent = group ? `Delete ${CV.msel.size}` : selLabel(it)
+  const m = !group && cvMedia(it)
+  $('#cv-sel-copy').hidden = !(m && m.pic)
+  $('#cv-sel-dl').hidden = !(m && S.downloads)
   const host = $('#canvas-view').getBoundingClientRect()
   let r = CV.els.get(id).getBoundingClientRect()
   if (group) { // above the whole group
@@ -9685,6 +9852,16 @@ function deleteSelected() {
   toast(label === 'Delete' ? 'Deleted' : 'Removed from the canvas', { label: 'Undo', run: undoCv })
 }
 $('#cv-sel-del').addEventListener('click', deleteSelected)
+$('#cv-sel-copy').addEventListener('click', () => { const m = cvMedia(CV.items.get(CV.sel)); if (m && m.pic) copyImage(m.pic) })
+$('#cv-sel-dl').addEventListener('click', () => { const m = cvMedia(CV.items.get(CV.sel)); if (m) downloadMedia(m) })
+// what a canvas item's picture or video is: a picture or video dropped on the canvas, or a reference's (`pic` is what Copy copies:
+// the picture itself, or a video's poster)
+function cvMedia(it) {
+  if (!it) return null
+  if (it.type === 'image' && (it.image || it.video)) return { id: it.video || it.image, kind: it.video ? 'video' : 'image', pic: it.image ? imgSrc(it.image) : null, name: 'dailies-canvas' }
+  const r = it.type === 'ref' && byId(it.refId)
+  return r ? refMedia(r) : null
+}
 $('#cv-sel').addEventListener('pointerdown', e => e.stopPropagation())
 function placeFmt(G) {
   placeSel()
@@ -10682,19 +10859,31 @@ function syncCvTop() {
 }
 $('#cv-back').onclick = () => { const id = $('#cv-back').dataset.id; if (id) openCanvas(id) }
 
-// right-click an item: delete it
+// right-click an item: copy or download its picture, or delete it
 vp.addEventListener('contextmenu', e => {
-  const hit = e.target.closest('.cv-item, .cv-strokes path, .cv-links [data-id]'), id = hit && hit.dataset.id
+  // (the canvas holds on to the pointer once a button goes down, so the event names the canvas itself: ask what's under the pointer)
+  const under = document.elementFromPoint(e.clientX, e.clientY) || e.target
+  const hit = under.closest('.cv-item, .cv-strokes path, .cv-links [data-id]'), id = hit && hit.dataset.id
   if (!id || !CV.items.has(id) || !S.canWrite || e.target.closest('input, textarea, [contenteditable="true"]')) return
   e.preventDefault()
   if (CV.editing) finishEdit()
   select(id)
   const m = $('#cvmenu'), it = CV.items.get(id)
-  m.innerHTML = `<button type="button" role="menuitem" class="danger" data-cvitem="delete">${selLabel(it)}</button>`
+  const md = cvMedia(it)
+  m.innerHTML = (md && md.pic ? '<button type="button" role="menuitem" data-cvitem="copy">Copy image</button>' : '') + (md && S.downloads ? `<button type="button" role="menuitem" data-cvitem="download">Download ${md.kind === 'video' ? 'video' : md.kind === 'gif' ? 'GIF' : 'image'}</button>` : '') +
+    `<button type="button" role="menuitem" class="danger" data-cvitem="delete">${selLabel(it)}</button>`
   m.hidden = false
   placeAt(m, e.clientX, e.clientY)
 })
-$('#cvmenu').addEventListener('click', e => { if (e.target.closest('[data-cvitem="delete"]')) { closeCvMenu(); deleteSelected() } })
+$('#cvmenu').addEventListener('click', e => {
+  const b = e.target.closest('[data-cvitem]')
+  if (!b) return
+  const m = cvMedia(CV.items.get(CV.sel))
+  closeCvMenu()
+  if (b.dataset.cvitem === 'delete') deleteSelected()
+  else if (b.dataset.cvitem === 'copy' && m && m.pic) copyImage(m.pic)
+  else if (b.dataset.cvitem === 'download' && m) downloadMedia(m)
+})
 
 // ---- canvas menu: switch, new, rename, delete
 let renamingCanvas = null
@@ -11600,6 +11789,7 @@ function fillLooks(r) {
   fillPalette(r)
   fillSuggestions(r)
   $('#d-dl').hidden = !S.downloads || !(r.video || r.gif || r.image)
+  $('#d-copyimg').hidden = !r.image
   $('#d-dl').textContent = r.video ? (r.media === 'gif' ? 'Download GIF (MP4)' : 'Download video') : r.gif ? 'Download GIF' : 'Download image'
   $('#d-tonote').hidden = true // the Notes page is gone
   const ai = r.ai, seen = brainSwitch() ? brainSeen(r) : [], said = brainSwitch() ? brainTextOf(r.id) : ''
@@ -11756,6 +11946,37 @@ $('#d-pal-dl').onclick = async () => {
   saveFile(name + '-swatches.zip', new Blob([zip], { type: 'application/zip' }))
 }
 const slug = t => String(t || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 48)
+// a reference's file: its video, GIF or full picture
+const refMedia = r => r.video ? { id: r.video, kind: 'video', pic: r.image ? imgSrc(r.image) : null, name: headOf(r) } : r.gif ? { id: r.gif, kind: 'gif', pic: r.image ? imgSrc(r.image) : null, name: headOf(r) } : r.image ? { id: r.image, kind: 'image', pic: imgSrc(r.image), name: headOf(r) } : null
+async function downloadMedia(m) {
+  if (!m || !S.downloads) return
+  toast('Preparing the download…')
+  try {
+    const blob = await (await fetch(imgSrc(m.id))).blob()
+    const ext = { 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif', 'image/jpeg': 'jpg', 'video/mp4': 'mp4', 'video/webm': 'webm', 'video/quicktime': 'mov' }[blob.type] || (m.kind === 'video' ? 'mp4' : m.kind === 'gif' ? 'gif' : 'jpg')
+    await saveFile(`${slug(m.name) || 'dailies'}.${ext}`, blob)
+  } catch (e) { toast('Couldn’t get the file: ' + (e.message || e)) }
+}
+// a picture onto the clipboard, ready to paste into Slack, Figma, Docs… Browsers only take PNG, so other pictures are redrawn
+// as PNG first. The clipboard is asked straight away (with the picture still on its way), so the click still counts as yours
+async function copyImage(src) {
+  try {
+    if (!navigator.clipboard || !navigator.clipboard.write || typeof ClipboardItem === 'undefined') throw new Error('no clipboard')
+    const png = (async () => {
+      const blob = await (await fetch(src)).blob()
+      if (blob.type === 'image/png') return blob
+      const bmp = await createImageBitmap(blob), c = document.createElement('canvas')
+      c.width = bmp.width; c.height = bmp.height
+      c.getContext('2d').drawImage(bmp, 0, 0)
+      bmp.close && bmp.close()
+      return new Promise((ok, no) => c.toBlob(b => b ? ok(b) : no(new Error('no picture')), 'image/png'))
+    })()
+    await navigator.clipboard.write([new ClipboardItem({ 'image/png': png })])
+    toast('Image copied · paste it anywhere')
+  } catch (e) {
+    toast(S.downloads ? 'This browser wouldn’t copy the picture here. Use Download instead.' : 'This browser wouldn’t copy the picture here.')
+  }
+}
 async function saveFile(filename, data) {
   try { await S.downloads.save({ filename, data }) }
   catch (e) { if (e && e.code !== 'declined') toast('Couldn’t download: ' + (e.message || e.code)) }
@@ -11797,6 +12018,7 @@ function makeZip(files) {
   return new Blob([...local, ...central, new Uint8Array(e.buffer)])
 }
 // ---- download the original picture, video or GIF Dailies keeps
+$('#d-copyimg').onclick = () => { const r = byId(S.detail); if (r && r.image) copyImage(imgSrc(r.image)) }
 $('#d-dl').onclick = async () => {
   const r = byId(S.detail); if (!r || !S.downloads) return
   const id = r.video || r.gif || r.image
