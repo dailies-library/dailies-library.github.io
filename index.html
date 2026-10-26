@@ -161,8 +161,9 @@
   let flushTimer = 0
   function save(col, id, op) {
     const k = K(col, id), cur = pending.get(k)
-    if (op.op === 'patch' && cur && cur.op === 'set') { /* the full write already carries it */ }
-    else if (op.op === 'patch' && cur && cur.op === 'patch') cur.patch = { ...cur.patch, ...op.patch }
+    const part = op.op === 'patch' || op.op === 'merge', curPart = cur && (cur.op === 'patch' || cur.op === 'merge')
+    if (part && cur && cur.op === 'set') { /* the full write already carries it */ }
+    else if (part && curPart) { cur.patch = { ...cur.patch, ...op.patch }; if (op.op === 'merge') cur.op = 'merge' }
     else pending.set(k, op)
     clearTimeout(flushTimer)
     flushTimer = setTimeout(flush, 250)
@@ -174,11 +175,12 @@
     flushing = flushing.then(async () => {
       if (!pending.size || W.loadError) return
       const batch = [...pending]; pending.clear()
-      const rows = [], dels = [], patches = []
+      const rows = [], dels = [], patches = [], merges = []
       for (const [k, op] of batch) {
         const [col, id] = k.split('\u0000')
         if (op.op === 'delete') dels.push([col, id, op])
         else if (op.op === 'patch' && mergeRpc) patches.push([k, col, id, op])
+        else if (op.op === 'merge' && mergeRpc) merges.push([k, col, id, op])
         else if (store[col] && store[col][id] !== undefined) rows.push([k, { owner: uid, col, id, data: store[col][id], updated_at: new Date().toISOString() }, op])
       }
       for (let i = 0; i < rows.length; i += 200) {
@@ -196,6 +198,24 @@
         if (error) {
           if (/merge_docs|PGRST202|schema cache/i.test(error.message || '') || error.code === 'PGRST202') { mergeRpc = false; for (const [k, , , op] of part) requeue(k, { op: 'set' }) } // no such function yet: write whole documents
           else { console.warn('not saved', error); W.lastSaveError = error.message || String(error); for (const [k, , , op] of part) requeue(k, op); toastLater('Couldn’t save just now. Retrying…') }
+        }
+      }
+      // a merge is a patch that also creates the document when there is none yet (the settings of a new account). It never
+      // writes the whole document from this tab's copy: another device may be adding to the same document at this moment,
+      // and a plain write from here would throw its fields away (that is how followed boards went missing once)
+      for (const [k, col, id, op] of merges) {
+        if (store[col] && store[col][id] !== undefined) inflight.set(k, JSON.stringify(store[col][id]))
+        const items = [{ col, id, patch: op.patch }]
+        let { data: n, error } = await sb.rpc('merge_docs', { p_items: items })
+        if (!error && !(n > 0)) { // not there: create it, unless another device just did (then merge into that one)
+          const ins = await sb.from('docs').upsert([{ owner: uid, col, id, data: op.patch, updated_at: new Date().toISOString() }], { onConflict: 'owner,col,id', ignoreDuplicates: true }).select('id')
+          error = ins.error
+          if (!error && !(ins.data && ins.data.length)) ({ data: n, error } = await sb.rpc('merge_docs', { p_items: items }))
+        }
+        inflight.delete(k)
+        if (error) {
+          if (/merge_docs|PGRST202|schema cache/i.test(error.message || '') || error.code === 'PGRST202') { mergeRpc = false; requeue(k, { op: 'set' }) }
+          else { console.warn('not saved', error); W.lastSaveError = error.message || String(error); requeue(k, op); toastLater('Couldn’t save just now. Retrying…') }
         }
       }
       // deletes go as one request per collection (deleting a 100-pin board used to be 100 round trips, one after the other)
@@ -281,6 +301,8 @@
       set: async data => { await ready; if (W.loadError) throw err('unavailable', 'Your library didn’t load, so nothing can be saved. Reload the page.'); (store[col] ||= {})[id] = clone(data); changed(col, id, { op: 'set' }) },
       update: async data => { await ready; const c = (store[col] ||= {}); if (c[id] === undefined) throw err('invalid_argument', 'That was deleted a moment ago'); const patch = clone(data); c[id] = { ...c[id], ...patch }; changed(col, id, { op: 'patch', patch }) },
       delete: async () => { await ready; if (store[col]) delete store[col][id]; changed(col, id, { op: 'delete' }) },
+      // change some fields, creating the document if it isn't there: safe from any tab or device at any moment
+      merge: async data => { await ready; if (W.loadError) throw err('unavailable', 'Your library didn’t load, so nothing can be saved. Reload the page.'); const c = (store[col] ||= {}); const patch = clone(data); c[id] = { ...(c[id] || {}), ...patch }; changed(col, id, { op: 'merge', patch }) },
       onSnapshot(cb, onErr) { let off = () => {}; ready.then(() => { if (W.loadError) { onErr && onErr(W.loadError); return } off = listen(col, () => { try { cb(docSnap(col, id)) } catch (e) { onErr && onErr(e) } }) }); return () => off() },
       acquire: async () => ({ acquired: true, release: async () => {} }),
       release: async () => {},
@@ -6103,11 +6125,26 @@ function openBoardMenu(name, anchor) {
   menuFor = 'board:' + name
   anchor.setAttribute('aria-expanded', 'true')
   const f = boardFollows(name), followed = f.list.some(f.match), n = boardRefs(name).length, what = S.source === 'instagram' ? 'collection' : 'board'
-  menu.innerHTML = `${followed ? `<button type="button" role="menuitem" data-act="unfollow-board">Stop following this ${what}</button>` : ''}
+  const can = !followed && S.source !== 'instagram' && (knownBoard(name) || pinUser()) // the username on record finds the board's address when its pins don't carry one
+  menu.innerHTML = `${followed ? `<button type="button" role="menuitem" data-act="unfollow-board">Stop following this ${what}</button>` : can ? '<button type="button" role="menuitem" data-act="follow-board">Follow this board · new pins arrive by themselves</button>' : ''}
     <button type="button" role="menuitem" class="danger" data-act="delete-board">Delete ${what} and its ${n} ${S.source === 'instagram' ? 'post' : 'pin'}${n === 1 ? '' : 's'}</button>`
   menu.hidden = false
   const a = anchor.getBoundingClientRect(), m = menu.getBoundingClientRect()
   placeAt(menu, Math.max(8, Math.min(innerWidth - m.width - 8, a.right - m.width)), a.bottom + 6 + m.height > innerHeight ? a.top - m.height - 6 : a.bottom + 6)
+}
+// the Pinterest username on record: typed in Import before, or the one your followed boards belong to
+function pinUser() {
+  if (!IMP.user) { try { IMP.user = localStorage.getItem('dailies:pinuser') || '' } catch { /* no storage */ } }
+  if (!IMP.user) IMP.user = (((S.settings && S.settings.pinterest) || [])[0] || {}).user || ''
+  return IMP.user
+}
+// the Pinterest address of a board on the shelf: from its pins, or from the boards the extension listed for your username
+function knownBoard(name) {
+  const n = String(name || '').toLowerCase()
+  const r = boardRefs(name).find(r => r.boardUrl)
+  if (r) { const b = parseBoard(r.boardUrl); if (b && b.board) return { user: b.user, board: b.board, url: boardUrl(b), label: name, count: 0 } }
+  const b = (IMP.boards || []).find(b => [b.name, b.board].some(v => v && String(v).toLowerCase() === n))
+  return b ? { user: b.user, board: b.board, url: boardUrl(b), label: b.name, id: b.id, count: b.count || 0 } : null
 }
 async function unfollowBoard(name) {
   const f = boardFollows(name)
@@ -6125,6 +6162,12 @@ $('#cardmenu').addEventListener('click', async e => {
     const name = menuFor.slice(6), act = item.dataset.act, what = S.source === 'instagram' ? 'collection' : 'board'
     closeMenu()
     if (act === 'unfollow-board') { await unfollowBoard(name); toast(`Stopped following “${name}”. Its pins stay in your library.`) }
+    if (act === 'follow-board') {
+      let b = knownBoard(name)
+      if (!b && pinUser()) { toast('Finding the board on Pinterest…'); await findPinBoards(pinUser()).catch(() => {}); b = knownBoard(name) }
+      if (b) { await followBoards([b]); toast(`Following “${name}”`) }
+      else toast(`Couldn’t find “${name}” on Pinterest. Open Import → Pinterest and pick it there.`)
+    }
     if (act === 'delete-board') {
       const refs = boardRefs(name)
       if (!(await askConfirm({ title: `Delete the ${what} “${name}”?`, body: `Its ${refs.length} ${S.source === 'instagram' ? 'post' : 'pin'}${refs.length === 1 ? '' : 's'} leave your library, and Dailies stops following the ${what}, so they won’t come back.` }))) return
@@ -6216,14 +6259,24 @@ async function rememberRemoved(refs, on = true) {
   await setSetting({ removed: next }).catch(() => { /* it stays for this visit */ })
 }
 // change some settings fields without writing the rest from this tab's copy (another device may have changed them meanwhile)
-async function setSetting(fields) {
-  const ref = S.db.doc('settings/main')
-  // the first time there is no settings document yet: it has to be created, not updated (the write queue quietly drops an
-  // update to a document that doesn't exist, which is right for something deleted a moment ago but not here)
-  const cur = await ref.get().catch(() => null)
-  if (cur && cur.exists) await ref.update(fields)
-  else await ref.set({ ...(S.settings || {}), ...fields })
-  S.settings = { ...(S.settings || {}), ...fields } // seen at once, before the snapshot arrives
+let settingWrite = Promise.resolve()
+function setSetting(fields) {
+  S.settings = { ...(S.settings || {}), ...fields } // seen at once, before the snapshot arrives (and by a second change made in the same moment)
+  const run = async () => {
+    const ref = S.db.doc('settings/main')
+    // the website merges the fields on the server and creates the document when there is none yet: two tabs, or the phone and
+    // the laptop, can each change their own fields at the same moment and neither throws the other's away
+    if (typeof ref.merge === 'function') return ref.merge(fields)
+    // the first time there is no settings document yet: it has to be created, not updated (the write queue quietly drops an
+    // update to a document that doesn't exist, which is right for something deleted a moment ago but not here)
+    const cur = await ref.get().catch(() => null)
+    if (cur && cur.exists) await ref.update(fields)
+    else await ref.set({ ...(S.settings || {}), ...fields })
+  }
+  // one write after another: two at once used to both find no document and the second replaced the first (followed boards vanished)
+  const p = settingWrite.then(run, run)
+  settingWrite = p.catch(() => {})
+  return p
 }
 // Deleting keeps the record for a few seconds so Undo can put it back; the picture goes after that.
 function deleteRef(r) {
@@ -7184,7 +7237,7 @@ async function receiveSave(d) {
   const again = d.again === true
   if (again) { if (isRemoved(id, dedupeKey(clean), pk && 'pk:' + pk)) await rememberRemoved([{ key: dedupeKey(clean), id, ...(pk ? { pk } : {}) }], false) }
   else if (isRemoved(id, dedupeKey(clean), pk && 'pk:' + pk)) {
-    if (d.k === 'pin' || d.k === 'igsave') return { state: 'duplicate', ref: null, removed: true } // a board or collection you follow: it stays deleted
+    if (d.k === 'pin' || d.k === 'igsave') return { state: 'duplicate', ref: null, removed: true, why: 'removed' } // a board or collection you follow: it stays deleted
     rememberRemoved([{ key: dedupeKey(clean), id }], false) // saved again from the page on purpose
   }
   if (image && !again && (d.k === 'pin' || d.k === 'igsave')) { const sg = await blobSig(image); if (sg && isRemoved('sig:' + sg)) return { state: 'duplicate', ref: null, removed: true } } // the same picture under a different link or id
@@ -7195,7 +7248,7 @@ async function receiveSave(d) {
     const board = d.k === 'pin' && !dup.board && d.board ? { board: String(d.board).slice(0, 120) } : {} // and file a pin under its board
     const pkNew = pk && !dup.pk ? { pk } : {} // learn the picture key of pins saved before it existed
     if (more.length || board.board || pkNew.pk) await patch(dup.id, { tags: [...(dup.tags || []), ...more], ...board, ...pkNew })
-    return { state: 'duplicate', ref: dup.id }
+    return { state: 'duplicate', ref: dup.id, why: dup.key === dedupeKey(clean) ? 'same link' : 'same picture' }
   }
   if (dup && d.k === 'igsave') { // already here (from Slack, say): just file it under the collection too
     const more = tags.filter(t => !(dup.tags || []).includes(t))
@@ -7218,7 +7271,7 @@ async function receiveSave(d) {
   }
   if (d.k === 'pin') {
     const at = d.at && !isNaN(new Date(d.at)) ? new Date(d.at).toISOString() : now
-    Object.assign(ref, { kind: 'pin', via: 'pinterest', board: String(d.board || '').slice(0, 120), savedAt: at, updatedAt: at, ...(pk ? { pk } : {}) })
+    Object.assign(ref, { kind: 'pin', via: 'pinterest', board: String(d.board || '').slice(0, 120), savedAt: at, updatedAt: at, ...(pk ? { pk } : {}), ...(d.bu && parseBoard(String(d.bu)) ? { boardUrl: String(d.bu).slice(0, 200) } : {}) })
   }
   if (d.k === 'igsave') { // from a saved collection you follow
     const at = d.at && !isNaN(new Date(d.at)) ? new Date(d.at).toISOString() : now
@@ -7229,7 +7282,7 @@ async function receiveSave(d) {
   if (window.DAILIES_DESKTOP && mayHaveVideo(ref, d)) ref.vidWant = true // the Mac app downloads its 720p video next
   // already stored but not on screen (an old save): keep it as it is, with its tags and notes, instead of writing over it
   const old = await S.db.collection('refs').doc(id).get().catch(() => null)
-  if (old && old.exists) { S.handled.add(id); return { state: 'duplicate', ref: id } }
+  if (old && old.exists) { S.handled.add(id); return { state: 'duplicate', ref: id, why: 'stored already' } }
   if (S.gone) S.gone.delete(id) // it may have been deleted earlier in this visit: it is wanted again
   await S.db.collection('refs').doc(id).set(ref)
   S.handled.add(id)
@@ -7435,7 +7488,7 @@ async function syncSlack(manual) {
       }
     }
     const newest = msgs.length ? msgs[msgs.length - 1].ts : set.lastTs
-    await S.db.doc('settings/main').update({ lastTs: newest || null, lastSyncAt: new Date().toISOString() })
+    await setSetting({ lastTs: newest || null, lastSyncAt: new Date().toISOString() })
     if (added) toast(`${added} new ${added === 1 ? 'reference' : 'references'} from Slack`)
     else if (manual) toast('Up to date with Slack')
   } catch (e) {
@@ -7535,7 +7588,7 @@ function renderSettings() {
     })
   }
   const react = $('#set-react')
-  if (react) react.onchange = () => S.db.doc('settings/main').update({ react: react.checked }).catch(e => toast(e.message))
+  if (react) react.onchange = () => setSetting({ react: react.checked }).catch(e => toast(e.message))
   const addBoard = async () => {
     const raw = $('#board-url').value.trim()
     const b = parseBoard(raw)
@@ -7548,8 +7601,14 @@ function renderSettings() {
     if (!b) { err.hidden = false; err.textContent = 'That isn’t a Pinterest board or profile link. Open the board on pinterest.com and copy its address.'; return }
     if ((set.pinterest || []).some(x => x.url === b.url)) { err.hidden = false; err.textContent = 'You already follow that board.'; return }
     $('#board-url').value = ''; err.hidden = true // cleared first, so the list can refresh under it
-    await followBoards([{ ...b, count: 0 }])
-    toast(`Following ${b.label}. Reading it now…`)
+    let add = { ...b, count: 0 }
+    if (b.board && S.inboxOpen && await extReady()) { // the board's real name and size from Pinterest, not a guess from its address ("text inspiration")
+      const res = await askExtension({ type: 'dailies:pinuser', user: b.user, nonce: ++IMP.nonce }, 'dailies:pinuser-result', 12000).catch(() => null)
+      const hit = res && (res.boards || []).find(x => x.board === b.board || boardUrl(x) === b.url)
+      if (hit) add = { user: hit.user || b.user, board: hit.board, url: boardUrl(hit), label: hit.name || b.label, id: hit.id, count: hit.count || 0 }
+    }
+    await followBoards([add])
+    toast(`Following ${add.label}. Reading it now…`)
   }
   const boardAdd = $('#board-add')
   if (boardAdd) { boardAdd.onclick = addBoard; $('#board-url').onkeydown = e => { if (e.key === 'Enter') addBoard() } }
