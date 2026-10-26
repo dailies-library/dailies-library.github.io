@@ -995,7 +995,23 @@ body.sites-mode .row1 { padding-bottom: 12px; }
 @media (max-width: 760px) { .st-wrap { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; } .site .tx { padding: 9px 10px 11px; } .site .tx p { display: none; } .site .src { display: none; } .site .more { opacity: 1; } }
 /* websites are sources, not pictures: the site's logo, its name and what it is (Rohit, 26 Oct: a screenshot is often a login
    page and says nothing) */
-.st-wrap.logos { grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); }
+.st-wrap.logos { grid-template-columns: repeat(auto-fill, minmax(var(--sc-w, 270px), 1fr)); }
+.sc-logo { width: var(--sc-logo, 46px) !important; height: var(--sc-logo, 46px) !important; }
+.sc-logo img { width: calc(var(--sc-logo, 46px) * .7) !important; height: calc(var(--sc-logo, 46px) * .7) !important; }
+.st-view { display: inline-flex; padding: 3px; border-radius: 999px; border: 1px solid var(--line); }
+.st-view button { width: 34px; height: 28px; border: 0; border-radius: 999px; background: none; color: var(--muted); display: grid; place-items: center; cursor: pointer; }
+.st-view button svg { width: 15px; height: 15px; fill: currentColor; }
+.st-view button[aria-pressed="true"] { background: var(--surface-3); color: var(--text); }
+.st-size input { width: 110px; }
+/* list: one row per site, the name on the left and what it is beside it */
+.st-wrap.logos.list { grid-template-columns: 1fr; gap: 0; }
+.st-wrap.list .st-head, .st-wrap.list .st-cats { margin-bottom: 10px; }
+.st-wrap.list .site.sc { display: grid; grid-template-columns: minmax(230px, 320px) 1fr; align-items: center; gap: 20px; padding: var(--sc-pad, 12px) 96px var(--sc-pad, 12px) 12px; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; background: none; }
+.st-wrap.list .site.sc:hover { transform: none; background: var(--surface); border-radius: 12px; border-bottom-color: transparent; }
+.st-wrap.list .sc-top { padding-right: 0 !important; }
+.st-wrap.list .sc-d { -webkit-line-clamp: var(--sc-lines, 1); }
+.st-wrap.list .sc-star, .st-wrap.list .site.sc .more { top: 50%; translate: 0 -50%; }
+.st-wrap.list .site.sc.lib .sc-star { right: 12px; }
 .site.sc { padding: 16px 16px 16px; display: grid; gap: 12px; align-content: start; }
 .sc-top { display: flex; align-items: center; gap: 12px; min-width: 0; padding-right: 68px; }
 .sc-logo { flex: none; width: 46px; height: 46px; border-radius: 12px; background: #fff; display: grid; place-items: center; overflow: hidden; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .08); }
@@ -1030,6 +1046,8 @@ body.sites-mode .row1 { padding-bottom: 12px; }
 .sc-star:active { transform: scale(.85); }
 .site.sc:not(.lib) .sc-star { right: 46px; }
 .site.sc .sc-top { padding-right: 76px; } .site.sc.lib .sc-top { padding-right: 40px; }
+@media (max-width: 760px) { .st-wrap.list .site.sc { grid-template-columns: 1fr; gap: 6px; padding-right: 12px; } .st-wrap.list .sc-top { padding-right: 76px !important; } .st-wrap.list .site.sc.lib .sc-top { padding-right: 40px !important; } .st-wrap.list .sc-d { -webkit-line-clamp: 2; } .st-wrap.list .sc-star, .st-wrap.list .site.sc .more { top: calc(var(--sc-pad, 12px) + 4px); translate: none; } }
+@media (max-width: 520px) { .st-size { display: none !important; } }
 @media (max-width: 760px) { .st-filt { margin-left: 0; } .site.sc .sc-top { padding-right: 70px; } .site.sc.lib .sc-top { padding-right: 36px; } .sc-star { top: 9px; right: 9px; } .site.sc:not(.lib) .sc-star { right: 42px; } }
 @media (max-width: 760px) {
   .st-wrap.logos { grid-template-columns: 1fr; gap: 8px; }
@@ -9160,6 +9178,8 @@ const sitesOn = () => document.body.classList.contains('sites-mode')
 // site's domain (settings.siteDomains) and every later save from it follows. Your own categories are settings.siteCatList.
 S.siteCat = lsGet('dailies.sitecat') || null
 S.siteFav = !!lsGet('dailies.sitefav')
+S.siteLayout = lsGet('dailies.sitelayout') === 'list' ? 'list' : 'grid'
+S.siteSizeGrid = lsGet('dailies.sitesize.grid'); S.siteSizeList = lsGet('dailies.sitesize.list')
 S.sitePrice = lsGet('dailies.siteprice') || null
 const SITE_CATS = [['ads', 'Ads'], ['stock', 'Images & stock'], ['templates', 'Templates'], ['audio', 'Music & SFX'], ['fonts', 'Fonts'], ['tools', 'Tools'], ['inspiration', 'Inspiration'], ['learning', 'Learning']]
 const SITE_KNOWN = {
@@ -9257,13 +9277,17 @@ function renderSites() {
   const pick = S.siteCat && cats.some(c => c[0] === S.siteCat) ? S.siteCat : null
   const list = pick ? all.filter(r => catsOf.get(r.id).includes(pick)) : all
   const shownCats = cats.filter(([k]) => counts[k] || k === pick || k.startsWith('c-'))
-  const sig = [favOnly, price, pick, terms.join(' '), JSON.stringify(counts), favCount, shownCats.map(c => c[1]).join(), list.map(r => r.id + (r.title || '') + (r.price || '') + isFav(r) + catsOf.get(r.id).join()).join('|')].join('#')
+  const sig = [S.siteLayout, favOnly, price, pick, terms.join(' '), JSON.stringify(counts), favCount, shownCats.map(c => c[1]).join(), list.map(r => r.id + (r.title || '') + (r.price || '') + isFav(r) + catsOf.get(r.id).join()).join('|')].join('#')
   if (wrap.dataset.sig === sig && wrap.dataset.shown === '1') return
   wrap.dataset.sig = sig
   wrap.classList.add('logos')
+  wrap.classList.toggle('list', S.siteLayout === 'list')
+  applySiteSize()
   const first = wrap.dataset.shown !== '1'; wrap.dataset.shown = '1'
   const head = `<div class="st-head"><b>Websites</b><span>${list.length}${favOnly ? ' favourites' : ' sites'}</span>
-    <div class="st-filt"><div class="st-price" role="group" aria-label="Price">${[['', 'Any price'], ['free', 'Free'], ['paid', 'Paid']].map(([k, l]) => `<button type="button" data-siteprice="${k}" aria-pressed="${(price || '') === k}">${l}</button>`).join('')}</div></div>
+    <div class="st-filt"><div class="st-view" role="group" aria-label="Layout"><button type="button" data-sitelayout="grid" aria-pressed="${S.siteLayout !== 'list'}" aria-label="Grid" data-tip="Grid">${GRID_IC}</button><button type="button" data-sitelayout="list" aria-pressed="${S.siteLayout === 'list'}" aria-label="List" data-tip="List">${LIST_IC}</button></div>
+    <label class="gb-size st-size" title="${S.siteLayout === 'list' ? 'Row size' : 'Card size'}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h4v4H4zM10 4h4v4h-4zM16 4h4v4h-4zM4 10h4v4H4zM10 10h4v4h-4zM16 10h4v4h-4zM4 16h4v4H4zM10 16h4v4h-4zM16 16h4v4h-4z"/></svg><input type="range" id="st-size" min="0" max="100" step="2" value="${siteSize()}" aria-label="${S.siteLayout === 'list' ? 'Row size' : 'Card size'}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3h8v8H3zM13 3h8v8h-8zM3 13h8v8H3zM13 13h8v8h-8z"/></svg></label>
+    <div class="st-price" role="group" aria-label="Price">${[['', 'Any price'], ['free', 'Free'], ['paid', 'Paid']].map(([k, l]) => `<button type="button" data-siteprice="${k}" aria-pressed="${(price || '') === k}">${l}</button>`).join('')}</div></div>
     ${S.canWrite && pick && pick.startsWith('c-') ? '<button class="linkbtn" type="button" data-sitecat-del>Remove this category</button>' : ''}</div>`
   const chips = `<nav class="st-cats" aria-label="Website categories"><button class="tab" type="button" data-sitecat="" data-siteall aria-pressed="${!pick && !favOnly}">All <span class="n">${favOnly ? base.filter(r => priced(r) && terms.every(t => hay(r).includes(t))).length : all.length}</span></button><button class="tab st-fav" type="button" data-sitefav aria-pressed="${favOnly}">${HEART_IC}Favourites <span class="n">${favCount}</span></button>${shownCats.map(([k, l]) => `<button class="tab" type="button" data-sitecat="${esc(k)}" aria-pressed="${pick === k}">${esc(l)} <span class="n">${counts[k] || 0}</span></button>`).join('')}${S.canWrite ? '<button class="tab st-add" type="button" data-sitecat-add>+ Add</button>' : ''}</nav>`
   const card = (r, i) => {
@@ -9274,6 +9298,19 @@ function renderSites() {
   const empty = favOnly && !favCount ? '<div class="st-empty"><b>No favourites yet</b>Tap the star on any website to keep it here.</div>'
     : `<div class="st-empty"><b>Nothing here${price ? ' at that price' : ''}</b>${pick && pick.startsWith('c-') ? 'Open a website’s ⋯ menu and choose Categories to put it here.' : 'Try other words, another category or another price.'}</div>`
   wrap.innerHTML = head + chips + (list.length ? list.map(card).join('') : empty)
+}
+// Websites: grid or list, and how big (0 to 100, like the Library's card size): grid cards 210 to 440 px wide; list rows from
+// one tight line to roomy rows with two lines of description
+const GRID_IC = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z"/></svg>'
+const LIST_IC = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h3v3H4zM9 5.5h11v2H9zM4 10.5h3v3H4zM9 11h11v2H9zM4 16h3v3H4zM9 16.5h11v2H9z"/></svg>'
+const siteSize = () => { const v = S.siteLayout === 'list' ? S.siteSizeList : S.siteSizeGrid; return Number.isFinite(v) ? v : (S.siteLayout === 'list' ? 40 : 30) }
+function applySiteSize() {
+  const w = $('#st-wrap'); if (!w) return
+  const t = siteSize() / 100
+  w.style.setProperty('--sc-w', Math.round(210 + t * 230) + 'px')
+  w.style.setProperty('--sc-logo', Math.round(30 + t * 26) + 'px')
+  w.style.setProperty('--sc-pad', Math.round(8 + t * 12) + 'px')
+  w.style.setProperty('--sc-lines', t > .55 ? 2 : 1)
 }
 const HEART_IC = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.2s-7.6-4.6-7.6-10.3A4.4 4.4 0 0 1 12 7.1a4.4 4.4 0 0 1 7.6 2.8c0 5.7-7.6 10.3-7.6 10.3z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>'
 // a site you saved is a favourite unless you unstarred it; a library site is a favourite once starred (starring saves it)
@@ -9439,7 +9476,16 @@ function siteAbout(r) {
 // the logo the site gives browsers and search results, at the largest size there is (a tiny or missing one shows a letter instead)
 const siteLogo = r => `https://www.google.com/s2/favicons?domain=${encodeURIComponent(siteHost(r))}&sz=128`
 const redrawSites = () => { $('#st-wrap').dataset.sig = ''; renderSites() }
+// the size slider changes the look in place (no rebuild, so dragging stays smooth)
+$('#st-wrap').addEventListener('input', e => {
+  if (e.target.id !== 'st-size') return
+  const v = +e.target.value
+  if (S.siteLayout === 'list') { S.siteSizeList = v; lsSet('dailies.sitesize.list', v) } else { S.siteSizeGrid = v; lsSet('dailies.sitesize.grid', v) }
+  applySiteSize()
+})
 $('#st-wrap').addEventListener('click', async e => {
+  const lay = e.target.closest('[data-sitelayout]')
+  if (lay) { S.siteLayout = lay.dataset.sitelayout; lsSet('dailies.sitelayout', S.siteLayout); redrawSites(); return }
   if (e.target.closest('[data-sitefav]')) { S.siteFav = !S.siteFav; lsSet('dailies.sitefav', S.siteFav); redrawSites(); return }
   const pr = e.target.closest('[data-siteprice]')
   if (pr) { S.sitePrice = pr.dataset.siteprice || null; lsSet('dailies.siteprice', S.sitePrice || ''); redrawSites(); return }
