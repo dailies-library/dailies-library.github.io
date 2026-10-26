@@ -976,9 +976,9 @@ body.sites-mode .row1 { padding-bottom: 12px; }
 .st-cats .st-addin { height: 34px; width: 170px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--line-2); background: var(--surface-2); color: var(--text); outline: none; }
 .st-head .linkbtn { margin-left: auto; }
 .menu .mc-h { padding: 6px 10px 4px; color: var(--faint); font-size: 12px; }
-.menu button[data-sitecat-tog] { display: flex; align-items: center; gap: 9px; }
-.menu button[data-sitecat-tog] i { flex: none; width: 15px; height: 15px; border-radius: 4px; border: 1.5px solid var(--line-2); display: grid; place-items: center; font-style: normal; font-size: 10px; line-height: 1; }
-.menu button[data-sitecat-tog][aria-checked="true"] i { background: var(--text); border-color: var(--text); color: var(--bg); }
+.menu button[data-sitecat-tog], .menu button[data-siteprice-set] { display: flex; align-items: center; gap: 9px; }
+.menu button[data-sitecat-tog] i, .menu button[data-siteprice-set] i { flex: none; width: 15px; height: 15px; border-radius: 4px; border: 1.5px solid var(--line-2); display: grid; place-items: center; font-style: normal; font-size: 10px; line-height: 1; }
+.menu button[data-sitecat-tog][aria-checked="true"] i, .menu button[data-siteprice-set][aria-checked="true"] i { background: var(--text); border-color: var(--text); color: var(--bg); }
 .st-empty { padding: 60px 0; color: var(--muted); font-size: 15px; line-height: 1.6; max-width: 460px; } .st-empty b { display: block; color: var(--text); font-size: 18px; margin-bottom: 6px; }
 .site { position: relative; border-radius: 14px; background: var(--surface); border: 1px solid var(--line); overflow: hidden; cursor: pointer; transition: transform .2s cubic-bezier(.2, .8, .2, 1), border-color .2s; }
 .site:hover { transform: translateY(-2px); border-color: var(--line-2); }
@@ -1008,6 +1008,26 @@ body.sites-mode .row1 { padding-bottom: 12px; }
 .sc-d { margin: 0; color: var(--muted); font-size: 13.5px; line-height: 1.5; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
 .sc-d.none { color: var(--faint); font-style: italic; }
 .site.sc .more, .site.sc .src { top: 14px; }
+.st-head { flex-wrap: wrap; align-items: center; row-gap: 10px; }
+.st-mode { display: inline-flex; padding: 3px; border-radius: 999px; background: var(--surface-2); }
+.st-mode button { height: 34px; padding: 0 14px; border: 0; border-radius: 999px; background: none; color: var(--muted); font-size: 14px; font-weight: 500; cursor: pointer; }
+.st-mode button .n { color: var(--faint); font-size: 12px; margin-left: 3px; }
+.st-mode button[aria-selected="true"] { background: var(--text); color: var(--bg); } .st-mode button[aria-selected="true"] .n { color: inherit; opacity: .6; }
+.st-price { display: inline-flex; gap: 2px; margin-left: auto; padding: 3px; border-radius: 999px; border: 1px solid var(--line); }
+.st-price button { height: 28px; padding: 0 12px; border: 0; border-radius: 999px; background: none; color: var(--muted); font-size: 13px; cursor: pointer; }
+.st-price button[aria-pressed="true"] { background: var(--surface-3); color: var(--text); }
+.sc-n .sc-sub { display: flex; align-items: center; gap: 6px; min-width: 0; overflow: visible; }
+.sc-dm { font-style: normal; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sc-pr { flex: none; font-style: normal; font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 999px; white-space: nowrap; }
+.sc-pr.free { color: #4ed492; background: rgba(78, 212, 146, .12); }
+.sc-pr.freemium { color: #7cb4ff; background: rgba(124, 180, 255, .12); }
+.sc-pr.paid { color: #e8b25a; background: rgba(232, 178, 90, .12); }
+:root[data-theme="light"] .sc-pr.free { color: #13804f; } :root[data-theme="light"] .sc-pr.freemium { color: #2463c7; } :root[data-theme="light"] .sc-pr.paid { color: #9a6410; }
+.sc-add { position: absolute; top: 14px; right: 14px; z-index: 2; height: 30px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--line-2); background: var(--surface-2); color: var(--text); font-size: 13px; font-weight: 500; cursor: pointer; }
+.sc-add:hover { background: var(--text); color: var(--bg); border-color: var(--text); }
+.sc-add.on { background: none; border-color: transparent; color: var(--faint); cursor: default; }
+.site.sc.lib .sc-top { padding-right: 84px; }
+@media (max-width: 760px) { .st-price { margin-left: 0; } .site.sc.lib .sc-top { padding-right: 78px; } .sc-add { top: 12px; right: 12px; } }
 @media (max-width: 760px) {
   .st-wrap.logos { grid-template-columns: 1fr; gap: 8px; }
   .site.sc { padding: 12px 12px 13px; gap: 8px; }
@@ -6226,7 +6246,8 @@ function openMenu(id, anchor, at = null) {
   menu.innerHTML = `
     ${S.canWrite ? `<button type="button" role="menuitem" data-act="rename">${r.kind === 'note' ? 'Edit note' : 'Rename'}</button>
     <button type="button" role="menuitem" data-act="project">Add to project…</button>
-    ${isSite(r) ? '<button type="button" role="menuitem" data-act="sitecats">Categories…</button>' : ''}` : ''}
+    ${isSite(r) ? '<button type="button" role="menuitem" data-act="sitecats">Categories and price…</button>' : ''}` : ''}
+    ${isSite(r) ? '<button type="button" role="menuitem" data-act="details">Details and notes</button>' : ''}
     <button type="button" role="menuitem" data-act="similar">Find similar</button>
     ${r.url ? `<a role="menuitem" href="${esc(r.url)}" target="_blank" rel="noopener noreferrer" data-act="open">Open on ${esc(info(r.source).label === 'Web' ? r.domain || 'the web' : info(r.source).label)} ↗</a>
     <button type="button" role="menuitem" data-act="copy">Copy link</button>` : ''}
@@ -6284,9 +6305,18 @@ function closeMenu() {
 function siteCatsMenu(r) {
   const menu = $('#cardmenu'), on = siteCatsOf(r)
   menu.innerHTML = `<div class="mc-h">Categories for ${esc(r.domain || siteHost(r) || 'this site')}</div>` +
-    siteCatList().map(([k, l]) => `<button type="button" role="menuitemcheckbox" data-sitecat-tog="${esc(k)}" aria-checked="${on.includes(k)}"><i>${on.includes(k) ? '✓' : ''}</i>${esc(l)}</button>`).join('')
+    siteCatList().map(([k, l]) => `<button type="button" role="menuitemcheckbox" data-sitecat-tog="${esc(k)}" aria-checked="${on.includes(k)}"><i>${on.includes(k) ? '✓' : ''}</i>${esc(l)}</button>`).join('') +
+    `<div class="mc-h">Price</div>` + Object.entries(PRICE_LABEL).map(([k, l]) => `<button type="button" role="menuitemradio" data-siteprice-set="${k}" aria-checked="${priceOf(r) === k}"><i>${priceOf(r) === k ? '✓' : ''}</i>${l}</button>`).join('')
 }
 $('#cardmenu').addEventListener('click', async e => {
+  const ps = e.target.closest('[data-siteprice-set]')
+  if (ps && menuFor) {
+    e.stopPropagation()
+    const r = byId(menuFor); if (!r) return
+    const k = ps.dataset.sitepriceSet, next = priceOf(r) === k ? null : k
+    r.price = next; siteCatsMenu(r)
+    await patch(r.id, { price: next }); redrawSites(); return
+  }
   const tog = e.target.closest('[data-sitecat-tog]')
   if (tog && menuFor) {
     e.stopPropagation()
@@ -6327,6 +6357,7 @@ $('#cardmenu').addEventListener('click', async e => {
   if (act === 'rename') { closeMenu(); openRename(r); return }
   if (act === 'similar') { closeMenu(); showSimilar(r.id); return }
   if (act === 'sitecats') { e.stopPropagation(); siteCatsMenu(r); return }
+  if (act === 'details') { closeMenu(); openDetail(r.id); return }
   if (act === 'project') { const a = (document.querySelector('.more[aria-expanded="true"]') || item).getBoundingClientRect(); closeMenu(); openProjMenu([r.id], a); return }
   if (act === 'copy') {
     closeMenu()
@@ -9125,6 +9156,8 @@ const sitesOn = () => document.body.classList.contains('sites-mode')
 // anything else from its words; nothing clear means Other. Change them from the card's ⋯ menu: Dailies then remembers that
 // site's domain (settings.siteDomains) and every later save from it follows. Your own categories are settings.siteCatList.
 S.siteCat = lsGet('dailies.sitecat') || null
+S.siteMode = lsGet('dailies.sitemode') || null
+S.sitePrice = lsGet('dailies.siteprice') || null
 const SITE_CATS = [['ads', 'Ads'], ['stock', 'Images & stock'], ['templates', 'Templates'], ['audio', 'Music & SFX'], ['fonts', 'Fonts'], ['tools', 'Tools'], ['inspiration', 'Inspiration'], ['learning', 'Learning']]
 const SITE_KNOWN = {
   stock: 'unsplash.com pexels.com pixabay.com stocksy.com gettyimages.com istockphoto.com shutterstock.com depositphotos.com dreamstime.com 123rf.com rawpixel.com storyblocks.com pond5.com flaticon.com thenounproject.com iconscout.com icons8.com videvo.net mixkit.co coverr.co burst.shopify.com kaboompics.com stock.adobe.com freepik.com envato.com motionarray.com creativemarket.com artlist.io artgrid.io',
@@ -9204,7 +9237,14 @@ function renderSites() {
   const wrap = $('#st-wrap'); if (!wrap) return
   const terms = S.q.toLowerCase().split(/\s+/).filter(Boolean)
   const hay = r => [r.title, r.caption, r.note, r.domain, r.author, (r.tags || []).join(' ')].join(' ').toLowerCase()
-  const all = S.refs.filter(r => isSite(r) && terms.every(t => hay(r).includes(t))).sort((a, b) => String(b.savedAt || '').localeCompare(String(a.savedAt || '')))
+  const mineAll = S.refs.filter(isSite)
+  const mine = new Set(mineAll.map(r => libKey(r.url || '')))
+  // two sides: the websites you saved, and Discover (a ready-made library to add from); you start on Discover while yours is empty
+  const mode = S.siteMode || (S.siteMode = mineAll.length ? 'mine' : 'lib') // decided once: adding your first site from Discover keeps you there
+  const base = mode === 'lib' ? libRefs().sort((x, y) => x.title.localeCompare(y.title)) : mineAll.sort((x, y) => String(y.savedAt || '').localeCompare(String(x.savedAt || '')))
+  const price = S.sitePrice || null
+  const priced = r => !price || (price === 'free' ? ['free', 'freemium'].includes(priceOf(r)) : priceOf(r) === 'paid')
+  const all = base.filter(r => terms.every(t => hay(r).includes(t)) && priced(r))
   // categories: one or more per site, as chips with counts (Rohit picked the chips layout, 26 Oct)
   const catsOf = new Map(all.map(r => [r.id, siteCatsOf(r)]))
   const counts = {}
@@ -9212,20 +9252,166 @@ function renderSites() {
   const cats = [...siteCatList(), ['other', 'Other']]
   const pick = S.siteCat && cats.some(c => c[0] === S.siteCat) ? S.siteCat : null
   const list = pick ? all.filter(r => catsOf.get(r.id).includes(pick)) : all
-  const shownCats = cats.filter(([k]) => counts[k] || k === pick || k.startsWith('c-'))
-  const sig = list.map(r => r.id + (r.image || '') + (r.title || '') + catsOf.get(r.id).join()).join('|') + '#' + terms.join(' ') + '#' + pick + '#' + JSON.stringify(counts) + shownCats.map(c => c[1]).join()
+  const shownCats = cats.filter(([k]) => counts[k] || k === pick || (mode === 'mine' && k.startsWith('c-')))
+  const sig = [mode, price, pick, terms.join(' '), mine.size, JSON.stringify(counts), shownCats.map(c => c[1]).join(), list.map(r => r.id + (r.title || '') + (r.price || '') + catsOf.get(r.id).join()).join('|')].join('#')
   if (wrap.dataset.sig === sig && wrap.dataset.shown === '1') return
   wrap.dataset.sig = sig
   wrap.classList.add('logos')
   const first = wrap.dataset.shown !== '1'; wrap.dataset.shown = '1'
-  const head = `<div class="st-head"><b>Websites</b><span>${list.length} saved${terms.length ? ' matching your search' : ''}</span>${S.canWrite && pick && pick.startsWith('c-') ? '<button class="linkbtn" type="button" data-sitecat-del>Remove this category</button>' : ''}</div>`
-  const chips = all.length || shownCats.length ? `<nav class="st-cats" aria-label="Website categories"><button class="tab" type="button" data-sitecat="" aria-pressed="${!pick}">All <span class="n">${all.length}</span></button>${shownCats.map(([k, l]) => `<button class="tab" type="button" data-sitecat="${esc(k)}" aria-pressed="${pick === k}">${esc(l)} <span class="n">${counts[k] || 0}</span></button>`).join('')}${S.canWrite ? '<button class="tab st-add" type="button" data-sitecat-add>+ Add</button>' : ''}</nav>` : ''
-  const none = pick && !list.length ? `<div class="st-empty"><b>Nothing in ${esc(siteCatLabel(pick))} yet</b>Open a website’s ⋯ menu and choose Categories to put it here.</div>` : ''
-  wrap.innerHTML = head + chips + none + (list.length || none ? list.map((r, i) => {
-    const name = siteName(r), about = siteAbout(r)
-    return `<article class="site sc${first ? ' enter' : ''}" data-id="${esc(r.id)}" style="--d:${Math.min(i, 20) * 45}ms">${srcBtn(r)}${S.canWrite ? MORE : ''}<div class="sc-top"><span class="sc-logo"><b class="sc-l">${esc((name[0] || '?').toUpperCase())}</b><img alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" src="${esc(siteLogo(r))}" onload="if(this.naturalWidth<32)this.remove()" onerror="this.remove()"></span><div class="sc-n"><b>${esc(name)}</b><span>${esc(r.domain || siteHost(r))}</span></div></div><p class="sc-d${about ? '' : ' none'}">${esc(about || 'This site doesn’t describe itself. Open it to add a note.')}</p></article>`
-  }).join('') : `<div class="st-empty"><b>${terms.length ? 'No websites match' : 'No websites yet'}</b>${terms.length ? 'Try other words.' : 'Press Save and paste a website link. It lands here with its picture, title and description.'}</div>`)
+  const head = `<div class="st-head"><div class="st-mode" role="tablist"><button type="button" role="tab" data-sitemode="mine" aria-selected="${mode === 'mine'}">Your websites <span class="n">${mineAll.length}</span></button><button type="button" role="tab" data-sitemode="lib" aria-selected="${mode === 'lib'}">Discover <span class="n">${SITE_LIB.length}</span></button></div>
+    <div class="st-price" role="group" aria-label="Price">${[['', 'Any price'], ['free', 'Free'], ['paid', 'Paid']].map(([k, l]) => `<button type="button" data-siteprice="${k}" aria-pressed="${(price || '') === k}">${l}</button>`).join('')}</div>
+    ${S.canWrite && mode === 'mine' && pick && pick.startsWith('c-') ? '<button class="linkbtn" type="button" data-sitecat-del>Remove this category</button>' : ''}</div>`
+  const chips = all.length || shownCats.length ? `<nav class="st-cats" aria-label="Website categories"><button class="tab" type="button" data-sitecat="" aria-pressed="${!pick}">All <span class="n">${all.length}</span></button>${shownCats.map(([k, l]) => `<button class="tab" type="button" data-sitecat="${esc(k)}" aria-pressed="${pick === k}">${esc(l)} <span class="n">${counts[k] || 0}</span></button>`).join('')}${S.canWrite && mode === 'mine' ? '<button class="tab st-add" type="button" data-sitecat-add>+ Add</button>' : ''}</nav>` : ''
+  const none = pick && !list.length ? `<div class="st-empty"><b>Nothing in ${esc(siteCatLabel(pick))}${price ? ' at that price' : ''} yet</b>${mode === 'mine' ? 'Open a website’s ⋯ menu and choose Categories to put it here, or add some from Discover.' : 'Try another category.'}</div>` : ''
+  const card = (r, i) => {
+    const name = nameOf(r), about = siteAbout(r), pr = priceOf(r), have = r.lib && isMine(r.url, mine)
+    const act = r.lib ? (S.canWrite ? `<button class="sc-add${have ? ' on' : ''}" type="button" data-libadd="${esc(r.url)}"${have ? ' disabled' : ''}>${have ? '✓ Added' : '+ Add'}</button>` : '') : (S.canWrite ? MORE : '')
+    return `<article class="site sc${first ? ' enter' : ''}${r.lib ? ' lib' : ''}" data-id="${esc(r.id)}" data-url="${esc(r.url || '')}" style="--d:${Math.min(i, 20) * 30}ms">${act}<div class="sc-top"><span class="sc-logo"><b class="sc-l">${esc((name[0] || '?').toUpperCase())}</b><img alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" src="${esc(siteLogo(r))}" onload="if(this.naturalWidth<32)this.remove()" onerror="this.remove()"></span><div class="sc-n"><b>${esc(name)}</b><span class="sc-sub"><i class="sc-dm">${esc(r.domain || siteHost(r))}</i>${pr ? `<em class="sc-pr ${pr}">${PRICE_LABEL[pr]}</em>` : ''}</span></div></div><p class="sc-d${about ? '' : ' none'}">${esc(about || 'This site doesn’t describe itself.')}</p></article>`
+  }
+  const emptyMine = `<div class="st-empty"><b>${terms.length || price ? 'No websites match' : 'No websites yet'}</b>${terms.length || price ? 'Try other words or another price.' : 'Add ready-made sources from <button class="linkbtn" type="button" data-sitemode="lib">Discover</button>, or press Save and paste any website link.'}</div>`
+  wrap.innerHTML = head + chips + none + (list.length ? list.map(card).join('') : none ? '' : mode === 'lib' ? '<div class="st-empty"><b>Nothing in Discover matches</b>Try other words or another price.</div>' : emptyMine)
 }
+// the name on a card: a library site's own name, else the cleaned-up page title
+const nameOf = r => r.lib ? r.title : (libOf(r) ? libOf(r)[0] : siteName(r))
+// ---- Discover: a ready-made library of sources for a creative team, to add to your own Websites in one tap
+// [name, address, categories, price, what it is]. price: free · freemium (a free plan, more if you pay) · paid
+const SITE_LIB = [
+  // ads
+  ['Meta Ad Library', 'https://www.facebook.com/ads/library/', 'ads', 'free', 'Every ad running on Facebook and Instagram, searchable by brand or word.'],
+  ['TikTok Creative Center', 'https://ads.tiktok.com/business/creativecenter/', 'ads inspiration', 'free', 'Top-performing TikTok ads, trending songs, hashtags and creators.'],
+  ['Google Ads Transparency Center', 'https://adstransparency.google.com/', 'ads', 'free', 'Ads any advertiser is running on Google Search, YouTube and Display.'],
+  ['LinkedIn Ad Library', 'https://www.linkedin.com/ad-library/', 'ads', 'free', 'Ads companies run on LinkedIn, searchable by company or keyword.'],
+  ['Ads of the World', 'https://www.adsoftheworld.com/', 'ads inspiration', 'freemium', 'A large archive of creative advertising campaigns from around the world.'],
+  ['AdForum', 'https://www.adforum.com/', 'ads', 'freemium', 'Ad campaigns, agencies and award winners from every market.'],
+  ['Foreplay', 'https://www.foreplay.co/', 'ads tools', 'paid', 'Save, organise and study ads from Meta, TikTok and LinkedIn in a swipe file.'],
+  ['Milled', 'https://milled.com/', 'ads inspiration', 'freemium', 'A searchable archive of marketing emails from thousands of brands.'],
+  ['Really Good Emails', 'https://reallygoodemails.com/', 'ads inspiration', 'free', 'Curated email designs, sorted by type and industry.'],
+  // images & stock
+  ['Unsplash', 'https://unsplash.com/', 'stock', 'freemium', 'High-resolution photos free to use, with a paid Unsplash+ collection.'],
+  ['Pexels', 'https://www.pexels.com/', 'stock', 'free', 'Free stock photos and videos from a large creator community.'],
+  ['Pixabay', 'https://pixabay.com/', 'stock audio', 'free', 'Free photos, illustrations, videos, music and sound effects.'],
+  ['Freepik', 'https://www.freepik.com/', 'stock templates', 'freemium', 'Vectors, photos, PSD mockups and icons, plus AI image tools.'],
+  ['Shutterstock', 'https://www.shutterstock.com/', 'stock audio', 'paid', 'A huge licensed library of photos, footage, vectors and music.'],
+  ['Getty Images', 'https://www.gettyimages.com/', 'stock', 'paid', 'Premium editorial and creative photos and footage.'],
+  ['iStock', 'https://www.istockphoto.com/', 'stock', 'paid', 'Getty’s more affordable stock photos, illustrations and video.'],
+  ['Adobe Stock', 'https://stock.adobe.com/', 'stock templates', 'paid', 'Photos, footage, vectors and Premiere / After Effects templates.'],
+  ['Envato Elements', 'https://elements.envato.com/', 'stock templates audio fonts', 'paid', 'One subscription for stock video, music, templates, photos and fonts.'],
+  ['Storyblocks', 'https://www.storyblocks.com/', 'stock audio templates', 'paid', 'Subscription stock footage, music and video templates.'],
+  ['Artgrid', 'https://artgrid.io/', 'stock', 'paid', 'Cinematic stock footage shot by filmmakers, in up to 8K.'],
+  ['Pond5', 'https://www.pond5.com/', 'stock audio', 'paid', 'Royalty-free footage, music and sound effects, bought per clip.'],
+  ['Coverr', 'https://coverr.co/', 'stock', 'free', 'Free stock video clips for websites and social posts.'],
+  ['Mixkit', 'https://mixkit.co/', 'stock audio templates', 'free', 'Free stock video, music, sound effects and video templates.'],
+  ['Videvo', 'https://www.videvo.net/', 'stock audio', 'freemium', 'Stock footage, motion graphics and music, some free.'],
+  ['rawpixel', 'https://www.rawpixel.com/', 'stock', 'freemium', 'Photos, vectors and public-domain art, with free and paid images.'],
+  ['Kaboompics', 'https://kaboompics.com/', 'stock', 'free', 'Free lifestyle photos with matching colour palettes.'],
+  ['Stocksy', 'https://www.stocksy.com/', 'stock', 'paid', 'Hand-picked, authentic stock photos and video from a co-op of artists.'],
+  ['Flaticon', 'https://www.flaticon.com/', 'stock', 'freemium', 'Millions of icons and stickers in every style.'],
+  ['The Noun Project', 'https://thenounproject.com/', 'stock', 'freemium', 'Simple icons and photos for almost any idea.'],
+  ['IconScout', 'https://iconscout.com/', 'stock', 'freemium', 'Icons, illustrations, 3D assets and Lottie animations.'],
+  ['Lucide', 'https://lucide.dev/', 'stock', 'free', 'A clean, open-source icon set for interfaces.'],
+  ['Phosphor Icons', 'https://phosphoricons.com/', 'stock', 'free', 'A flexible open-source icon family in six weights.'],
+  ['unDraw', 'https://undraw.co/', 'stock', 'free', 'Open-source illustrations you can recolour to your brand.'],
+  ['Blush', 'https://blush.design/', 'stock', 'freemium', 'Mix-and-match illustrations from many artists.'],
+  ['Poly Haven', 'https://polyhaven.com/', 'stock', 'free', 'Free HDRIs, textures and 3D models, all public domain.'],
+  ['Sketchfab', 'https://sketchfab.com/', 'stock', 'freemium', '3D models to view, download or buy.'],
+  ['GIPHY', 'https://giphy.com/', 'stock', 'free', 'Search and share GIFs and stickers.'],
+  // templates
+  ['Motion Array', 'https://motionarray.com/', 'templates stock audio', 'paid', 'Video templates, presets, stock footage and music for editors.'],
+  ['VideoHive', 'https://videohive.net/', 'templates', 'paid', 'After Effects, Premiere and motion templates, bought one at a time.'],
+  ['Placeit', 'https://placeit.net/', 'templates tools', 'paid', 'Mockups, logos and video templates made in the browser.'],
+  ['Mockup World', 'https://www.mockupworld.co/', 'templates', 'free', 'Free photo-realistic PSD mockups.'],
+  ['LS Graphics', 'https://www.ls.graphics/', 'templates', 'freemium', 'Premium and free mockups, scenes and 3D assets.'],
+  ['Creative Market', 'https://creativemarket.com/', 'templates fonts stock', 'paid', 'Fonts, templates and graphics from independent creators.'],
+  ['Figma Community', 'https://www.figma.com/community', 'templates', 'free', 'Free design files, UI kits and plugins shared by designers.'],
+  ['Framer Marketplace', 'https://www.framer.com/marketplace/', 'templates', 'freemium', 'Website templates and components for Framer.'],
+  ['LottieFiles', 'https://lottiefiles.com/', 'templates tools', 'freemium', 'Free and premium Lottie animations, with tools to edit them.'],
+  ['UI8', 'https://ui8.net/', 'templates', 'paid', 'UI kits, illustrations, 3D assets and mockups.'],
+  // music & sfx
+  ['Artlist', 'https://artlist.io/', 'audio stock', 'paid', 'Music, sound effects, footage and templates on one licence.'],
+  ['Epidemic Sound', 'https://www.epidemicsound.com/', 'audio', 'paid', 'Music and sound effects cleared for social and YouTube.'],
+  ['Musicbed', 'https://www.musicbed.com/', 'audio', 'paid', 'Music from independent artists, licensed for films and brands.'],
+  ['Soundstripe', 'https://www.soundstripe.com/', 'audio', 'paid', 'Royalty-free music and sound effects for video.'],
+  ['Uppbeat', 'https://uppbeat.io/', 'audio', 'freemium', 'Free music for creators, with a paid plan for more.'],
+  ['Freesound', 'https://freesound.org/', 'audio', 'free', 'A community library of Creative Commons sound effects.'],
+  ['ZapSplat', 'https://www.zapsplat.com/', 'audio', 'freemium', 'Thousands of free sound effects and music tracks.'],
+  ['Soundsnap', 'https://www.soundsnap.com/', 'audio', 'paid', 'Professional sound effects for film and games.'],
+  ['BBC Sound Effects', 'https://sound-effects.bbcrewind.co.uk/', 'audio', 'free', 'The BBC’s sound archive, free for personal and educational use.'],
+  ['Splice', 'https://splice.com/', 'audio', 'paid', 'Royalty-free samples, loops and presets for making music.'],
+  // fonts
+  ['Google Fonts', 'https://fonts.google.com/', 'fonts', 'free', 'Free, open-source typefaces for any project.'],
+  ['Fontshare', 'https://www.fontshare.com/', 'fonts', 'free', 'Quality fonts free for personal and commercial use.'],
+  ['Adobe Fonts', 'https://fonts.adobe.com/', 'fonts', 'paid', 'Thousands of fonts included with Creative Cloud.'],
+  ['MyFonts', 'https://www.myfonts.com/', 'fonts', 'paid', 'A huge store of fonts from foundries worldwide.'],
+  ['Pangram Pangram', 'https://pangrampangram.com/', 'fonts', 'freemium', 'Contemporary typefaces, free to try for personal use.'],
+  ['Future Fonts', 'https://www.futurefonts.xyz/', 'fonts', 'paid', 'Typefaces bought early while they are still being made.'],
+  ['Velvetyne', 'https://velvetyne.fr/', 'fonts', 'free', 'Experimental open-source fonts.'],
+  ['Font Squirrel', 'https://www.fontsquirrel.com/', 'fonts', 'free', 'Fonts licensed for commercial use, at no cost.'],
+  ['DaFont', 'https://www.dafont.com/', 'fonts', 'free', 'Free display fonts, many for personal use only.'],
+  ['Fonts In Use', 'https://fontsinuse.com/', 'fonts inspiration', 'free', 'An archive of typography in real design work.'],
+  ['Typewolf', 'https://www.typewolf.com/', 'fonts inspiration', 'free', 'Font pairings and what’s trending in type.'],
+  // tools
+  ['Figma', 'https://www.figma.com/', 'tools', 'freemium', 'Design, prototype and hand off interfaces together.'],
+  ['Canva', 'https://www.canva.com/', 'tools templates', 'freemium', 'Quick designs from templates for social, decks and print.'],
+  ['invideo AI', 'https://invideo.io/', 'tools', 'freemium', 'Make videos from a prompt, with stock media and voiceovers.'],
+  ['Runway', 'https://runwayml.com/', 'tools', 'freemium', 'AI video generation and editing tools.'],
+  ['Krea', 'https://www.krea.ai/', 'tools', 'freemium', 'Real-time AI image and video generation and upscaling.'],
+  ['Midjourney', 'https://www.midjourney.com/', 'tools', 'paid', 'AI image generation with a strong artistic style.'],
+  ['Ideogram', 'https://ideogram.ai/', 'tools', 'freemium', 'AI images that get text and typography right.'],
+  ['Kling AI', 'https://klingai.com/', 'tools', 'freemium', 'AI video generation from text or images.'],
+  ['Luma Dream Machine', 'https://lumalabs.ai/', 'tools', 'freemium', 'AI video and 3D capture from text and images.'],
+  ['Higgsfield', 'https://higgsfield.ai/', 'tools', 'freemium', 'AI video with cinematic camera moves.'],
+  ['ElevenLabs', 'https://elevenlabs.io/', 'tools audio', 'freemium', 'Realistic AI voiceovers, dubbing and sound effects.'],
+  ['CapCut', 'https://www.capcut.com/', 'tools templates', 'freemium', 'Video editing with templates, captions and effects.'],
+  ['Descript', 'https://www.descript.com/', 'tools', 'freemium', 'Edit video and audio by editing the transcript.'],
+  ['Topaz Labs', 'https://www.topazlabs.com/', 'tools', 'paid', 'AI upscaling and clean-up for photos and video.'],
+  ['Spline', 'https://spline.design/', 'tools', 'freemium', '3D design in the browser, ready for the web.'],
+  ['Rive', 'https://rive.app/', 'tools templates', 'freemium', 'Interactive animations for apps, sites and games.'],
+  ['Photopea', 'https://www.photopea.com/', 'tools', 'free', 'A Photoshop-like editor that runs in the browser.'],
+  ['remove.bg', 'https://www.remove.bg/', 'tools', 'freemium', 'Remove image backgrounds in one click.'],
+  ['Coolors', 'https://coolors.co/', 'tools', 'freemium', 'Generate and explore colour palettes.'],
+  ['Squoosh', 'https://squoosh.app/', 'tools', 'free', 'Compress and convert images in the browser.'],
+  ['Frame.io', 'https://frame.io/', 'tools', 'freemium', 'Share cuts and collect frame-accurate feedback.'],
+  ['Miro', 'https://miro.com/', 'tools', 'freemium', 'An online whiteboard for moodboards and planning.'],
+  // inspiration
+  ['Behance', 'https://www.behance.net/', 'inspiration', 'free', 'Portfolios and case studies from creatives worldwide.'],
+  ['Dribbble', 'https://dribbble.com/', 'inspiration', 'free', 'Design shots from designers and studios.'],
+  ['Awwwards', 'https://www.awwwards.com/', 'inspiration', 'free', 'Award-winning websites and web design trends.'],
+  ['Mobbin', 'https://mobbin.com/', 'inspiration', 'freemium', 'Real app and web screens and flows, searchable.'],
+  ['Land-book', 'https://land-book.com/', 'inspiration', 'freemium', 'A gallery of landing page designs.'],
+  ['Godly', 'https://godly.website/', 'inspiration', 'free', 'Astronomically good web design, curated.'],
+  ['Lapa Ninja', 'https://www.lapa.ninja/', 'inspiration', 'free', 'Landing page designs from around the web.'],
+  ['SiteInspire', 'https://www.siteinspire.com/', 'inspiration', 'free', 'A showcase of web design, by style and type.'],
+  ['One Page Love', 'https://onepagelove.com/', 'inspiration templates', 'free', 'One-page websites, templates and resources.'],
+  ['Refero', 'https://refero.design/', 'inspiration', 'freemium', 'A searchable library of UI design references.'],
+  ['Savee', 'https://savee.it/', 'inspiration', 'freemium', 'Save and share visual inspiration with designers.'],
+  ['Cosmos', 'https://www.cosmos.so/', 'inspiration', 'free', 'A calm place to collect and discover images.'],
+  ['Are.na', 'https://www.are.na/', 'inspiration', 'freemium', 'Collect ideas into channels and connect them.'],
+  ['Muzli', 'https://muz.li/', 'inspiration', 'free', 'Daily design inspiration from across the web.'],
+  ['Motionographer', 'https://motionographer.com/', 'inspiration', 'free', 'Motion design, animation and VFX work and news.'],
+  ['Art of the Title', 'https://www.artofthetitle.com/', 'inspiration', 'free', 'Title sequences from film and TV, with interviews.'],
+  ['STASH', 'https://www.stashmedia.tv/', 'inspiration', 'paid', 'A curated stream of the best animation and VFX.'],
+  ['ShotDeck', 'https://shotdeck.com/', 'inspiration', 'paid', 'Searchable high-quality film stills for references.'],
+  ['FILMGRAB', 'https://film-grab.com/', 'inspiration', 'free', 'Film stills, organised by movie.'],
+  ['EYECANNNDY', 'https://www.eyecannndy.com/', 'inspiration', 'free', 'Film techniques as short clips, sorted by effect.'],
+  // learning
+  ['School of Motion', 'https://www.schoolofmotion.com/', 'learning', 'paid', 'Motion design courses for After Effects and Cinema 4D.'],
+  ['Motion Design School', 'https://motiondesign.school/', 'learning', 'paid', 'Courses on animation, 3D and motion design.'],
+  ['Domestika', 'https://www.domestika.org/', 'learning', 'paid', 'Creative courses taught by working professionals.'],
+  ['Skillshare', 'https://www.skillshare.com/', 'learning', 'paid', 'Classes on design, video, illustration and more.'],
+  ['Envato Tuts+', 'https://tutsplus.com/', 'learning', 'free', 'Free tutorials on design, video, photo and code.'],
+  ['Video Copilot', 'https://www.videocopilot.net/', 'learning', 'free', 'After Effects tutorials and plugins.'],
+  ['Greyscalegorilla', 'https://greyscalegorilla.com/', 'learning', 'freemium', 'Cinema 4D and 3D tutorials and assets.'],
+  ['Coursera', 'https://www.coursera.org/', 'learning', 'freemium', 'University courses, many free to audit.'],
+]
+const PRICE_LABEL = { free: 'Free', freemium: 'Free plan', paid: 'Paid' }
+// a library entry, read as a website card would read a saved one
+const libRefs = () => SITE_LIB.map(([name, url, cats, price, about]) => ({ id: 'lib:' + url, lib: true, url, domain: hostOf(url), title: name, caption: about, siteCats: cats.split(' '), price }))
+// the library entry a saved website matches (for its price), and whether a library entry is already yours
+const libKey = u => { try { const x = new URL(u); return x.hostname.replace(/^www\./, '') + x.pathname.replace(/\/+$/, '') } catch { return '' } }
+const LIB_BY = new Map(SITE_LIB.map(e => [libKey(e[1]), e]))
+const libOf = r => LIB_BY.get(libKey(r.url || '')) || LIB_BY.get(siteHost(r)) || null
+const priceOf = r => r.price || (libOf(r) || [])[3] || null
+const isMine = (url, mine) => mine.has(libKey(url))
 // the site's own name from its page title ("Beautiful Free Images & Pictures | Unsplash" is Unsplash): the part that names the
 // domain, else a short first part, else the domain itself
 function siteName(r) {
@@ -9248,6 +9434,25 @@ function siteAbout(r) {
 const siteLogo = r => `https://www.google.com/s2/favicons?domain=${encodeURIComponent(siteHost(r))}&sz=128`
 const redrawSites = () => { $('#st-wrap').dataset.sig = ''; renderSites() }
 $('#st-wrap').addEventListener('click', async e => {
+  const md = e.target.closest('[data-sitemode]')
+  if (md) { S.siteMode = md.dataset.sitemode; lsSet('dailies.sitemode', S.siteMode); S.siteCat = null; lsSet('dailies.sitecat', ''); redrawSites(); window.scrollTo({ top: 0 }); return }
+  const pr = e.target.closest('[data-siteprice]')
+  if (pr) { S.sitePrice = pr.dataset.siteprice || null; lsSet('dailies.siteprice', S.sitePrice || ''); redrawSites(); return }
+  const la = e.target.closest('[data-libadd]')
+  if (la) {
+    e.stopPropagation()
+    if (la.disabled || !S.canWrite) return
+    const e2 = SITE_LIB.find(x => x[1] === la.dataset.libadd); if (!e2) return
+    const [name, url, cats, price, about] = e2
+    la.disabled = true; la.textContent = 'Adding…'
+    try {
+      const res = await saveRef({ url })
+      if (res && res.id) await patch(res.id, { title: name, caption: about, siteCats: cats.split(' '), price })
+      la.classList.add('on'); la.textContent = '✓ Added'
+      toast(`Added ${name} to your websites`)
+    } catch (err) { la.disabled = false; la.textContent = '+ Add'; toast('Couldn’t add it: ' + (err.message || err)) }
+    return
+  }
   const chip = e.target.closest('[data-sitecat]')
   if (chip) { S.siteCat = chip.dataset.sitecat || null; lsSet('dailies.sitecat', S.siteCat || ''); redrawSites(); return }
   if (e.target.closest('[data-sitecat-del]')) {
@@ -9276,7 +9481,8 @@ $('#st-wrap').addEventListener('click', async e => {
   if (e.target.closest('[data-src]')) { e.stopPropagation(); return }
   const more = e.target.closest('[data-more]')
   if (more) { e.stopPropagation(); openMenu(c.dataset.id, more); return }
-  openDetail(c.dataset.id)
+  // a website card opens the website (its details, categories and price are in the ⋯ menu)
+  if (c.dataset.url) window.open(c.dataset.url, '_blank', 'noopener')
 })
 function placeCanvas() { document.documentElement.style.setProperty('--top-h', $('.top').getBoundingClientRect().bottom + 'px') }
 addEventListener('resize', () => { if (canvasOn() || notesOn() || projectsOn()) placeCanvas() })
