@@ -7338,6 +7338,7 @@ function openInbox() {
   window.addEventListener('message', e => {
     if (e.source !== window || !e.data) return
     if (e.data.type === 'dailies:ig-follow') followIgCollections(e.data.cols || []).catch(err => toast('Couldn’t follow that collection: ' + err.message))
+    if (e.data.type === 'dailies:ig-next') { S.igNext = +e.data.at || 0; if (!$('#settings').hidden) renderSettings(); return }
     if (e.data.type !== 'dailies:ig-status') return
     S.igStatus = { ...S.igStatus, ...(e.data.status || {}) }
     const added = Object.values(e.data.status || {}).reduce((n, c) => n + (c.added || 0), 0)
@@ -7402,6 +7403,7 @@ function requestPreviews() {
   const items = S.refs.filter(r => r.url && !S.asked.has(r.id) && ((r.preview === 'pending' && !r.image && (window.DAILIES_DESKTOP || PREVIEWABLE.includes(r.source) || (siteReady() && !['note', 'upload'].includes(r.source)))) || ((r.source === 'pinterest' || r.source === 'twitter') && (!r.media || (VIDEO_PREVIEWS && r.media !== 'image' && !r.video && !r.gif && needFrames(r)))) || (slidesReady() && (r.source === 'pinterest' || r.source === 'twitter') && !r.sl && r.kind !== 'note') || (pkReady() && r.source === 'pinterest' && !r.pk && /\/pin\/\d+/.test(r.url || '')) || (r.source === 'youtube' && (needFrames(r) || wideShort(r))) || (r.source === 'instagram' && needFrames(r) && !!r.image) || (r.via === 'instagram' && r.image && !r.caption && !r.title) || (VIDEO_PREVIEWS && window.DAILIES_DESKTOP && r.vidWant && !r.video)))
     // what you can see first, then the cards just below, then the rest: previews seem to be there already as you scroll
     .map((r, i) => [r, onScreenRank(r.id, i)]).sort((a, b) => a[1] - b[1]).map(x => x[0])
+    .filter(r => r.source !== 'instagram' || document.visibilityState === 'visible') // Instagram only while you're looking (fewer automatic requests on your account)
     .slice(0, 25).map(r => ({ id: r.id, url: r.url, source: r.source, has: !!r.image && !wideShort(r), frames: r.source === 'instagram' && needFrames(r) })) // reels: the extension makes a sheet of frames to scrub through
   if (!items.length) return
   S.askedAt = S.askedAt || new Map()
@@ -7880,7 +7882,7 @@ function renderSettings() {
       ${bad(pinSt) ? `<p class="sline bad">${esc(bad(pinSt))}</p>` : ''}
       ${S.canWrite ? `<div class="addrow"><input class="field" id="board-url" placeholder="Your username or a board link" autocomplete="off" spellcheck="false"><button class="btn" id="board-add" type="button">Add</button></div><p class="sline bad" id="board-error" hidden></p>` : ''}`) +
     sec('ig', glyph('instagram', true), 'Instagram', igDot, !igCols.length ? 'None followed' : igDot === 'warn' ? 'Not imported yet' : noun(igCols.length, 'collection'), `
-      <p class="sline">On instagram.com open a Saved collection, click the Dailies extension and press <b>Import</b>. After that, while Dailies is open in Chrome, the extension checks each collection for new saves every 10 minutes and when you press Refresh, in a background tab that closes itself.</p>
+      <p class="sline">On instagram.com open a Saved collection, click the Dailies extension and press <b>Import</b>. After that, while Dailies is open in Chrome, the extension looks at two of your collections at a time for new saves, at a random moment 40 to 80 minutes apart (never on a schedule Instagram could spot), in a background tab that closes itself. Refresh can ask sooner, at most every 10 minutes.${S.igNext && S.igNext > Date.now() ? ` <b>Next look: around ${new Date(S.igNext).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</b> (in ${Math.max(1, Math.round((S.igNext - Date.now()) / 60e3))} min).` : ''}</p>
       ${igCols.length ? `<div class="boards">${igCols.map((c, i) => { const st = igSt[i]; return row(c.label + (st && st.ok ? ' · ' + (st.total || 0) + ' saves' : ''), st, 'data-unig', i, 'Stop following ' + esc(c.label)) }).join('')}</div>` : ''}
       ${bad(igSt) ? `<p class="sline bad">${esc(bad(igSt))}</p>` : ''}
       ${S.canWrite ? `<div class="addrow"><input class="field" id="ig-url" placeholder="Paste a collection link" autocomplete="off" spellcheck="false"><button class="btn" id="ig-add" type="button">Add</button></div><p class="sline bad" id="ig-error" hidden></p>` : ''}`) +
