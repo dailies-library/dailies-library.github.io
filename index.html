@@ -912,6 +912,10 @@ body.canvas-mode #import-btn, body.projects-mode #import-btn { display: none; }
 .imp-row .n { color: var(--muted); font-size: 12.5px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .imp-row.done .n { color: var(--ok); }
 .imp-note { margin: 16px 0 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
+.imp-bg { display: flex; gap: 10px; align-items: flex-start; margin: 16px 0 0; padding: 12px 14px; border-radius: 12px; background: var(--surface-2, rgba(255,255,255,.05)); color: var(--text); font-size: 13px; line-height: 1.5; }
+.imp-bg svg { flex: none; width: 16px; height: 16px; margin-top: 2px; color: var(--muted); }
+.imp-bg span { color: var(--muted); }
+.card.ghost { pointer-events: none; } /* read from Pinterest, still being stored: shown, not yet touchable */
 /* Instagram and links */
 .imp-steps { margin: 0 0 18px; padding: 0; list-style: none; display: grid; gap: 10px; counter-reset: st; }
 .imp-steps li { display: flex; align-items: center; gap: 12px; font-size: 14px; counter-increment: st; }
@@ -4372,7 +4376,7 @@ function openImport(first) {
   if (!IMP.user) { try { IMP.user = localStorage.getItem('dailies:pinuser') || '' } catch { /* no storage */ } }
   if (!IMP.user) IMP.user = (((S.settings && S.settings.pinterest) || [])[0] || {}).user || ''
   renderImport()
-  openOverlay($('#import'), () => { if (IMP.first) { try { localStorage.setItem(WELCOME_KEY, '1') } catch { /* no storage */ } } IMP.first = false; if (IMP.run) impProgressSoon() })
+  openOverlay($('#import'), () => { if (IMP.first) { try { localStorage.setItem(WELCOME_KEY, '1') } catch { /* no storage */ } } IMP.first = false; if (IMP.run) impProgressSoon(); if (IMP.run && !IMP.run.finished) toast('Still bringing in your pins in the background. Carry on.') })
 }
 $('#import-btn').onclick = () => openImport(false)
 function impGo(view) { IMP.view = view; IMP.err = ''; renderImport() }
@@ -4546,6 +4550,8 @@ function renderYtProgress() {
 }
 
 // the end of every import: back to the platform list for the next one, or close the panel
+// said on every import that is still running: it doesn't need this window, or even this tab
+const BG_NOTE = '<p class="imp-bg"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 7v5l3 2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><b>Keeps going in the background.</b> <span>Close this and carry on. If you close the tab, it picks up again the next time you open Dailies in Chrome.</span></p>'
 const impFootHtml = (closeAttr, running) => `<div class="imp-foot"><span></span><div class="imp-acts">${running ? '<button class="btn" type="button" data-imp-stop>Stop</button>' : ''}<button class="btn" type="button" data-imp-more>Import another platform</button><button class="btn primary" type="button" ${closeAttr}>Done</button></div></div>`
 function wireImpMore(box) { const b = box.querySelector('[data-imp-more]'); if (b) b.onclick = () => impGo('home') }
 
@@ -4774,6 +4780,34 @@ async function stopPinImport() {
   try { await setSetting({ pinterest: have.filter(b => !open.includes(b.url)) }); await markUnfollowed(open) } catch { /* it stays followed: harmless */ }
   renderImpProgress()
 }
+// Pins the extension has read but not stored yet: on the wall at once with Pinterest's own picture, then swapped for the
+// stored reference as it lands (Rohit, 26 Oct: "at least make the experience of it faster"). Only during an import you started.
+const GHOST = new Map()
+let ghostTimer = 0
+function addGhosts(m) {
+  const run = IMP.run
+  if (!run || run.finished || run.stopped || !m || !Array.isArray(m.pins)) return
+  const b = run.boards.find(x => x.url === m.url)
+  if (!b) return
+  let n = 0
+  for (const p of m.pins.slice(0, 250)) {
+    const id = 'x-' + String(p && p.id || '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 40)
+    if (id === 'x-' || byId(id) || GHOST.has(id) || !/^https:\/\/i\.pinimg\.com\//.test(p.pic || '')) continue
+    GHOST.set(id, { id, ghost: true, source: 'pinterest', kind: 'pin', via: 'pinterest', board: b.label, url: '', key: '', title: String(p.t || '').slice(0, 200), caption: '', note: '', tags: [], image: null, ghostPic: p.pic, imageW: +p.w || null, imageH: +p.h || null, savedAt: p.at || new Date().toISOString(), preview: 'done' })
+    ;(S.arrived ||= []).includes(id) || S.arrived.push(id) // where its stored copy will sit, so nothing moves when it lands
+    n++
+  }
+  if (n) { clearTimeout(ghostTimer); ghostTimer = setTimeout(render, 150) }
+}
+function ghostList() {
+  if (!GHOST.size) return []
+  const run = IMP.run
+  if (!run || run.stopped || (run.endedAt && Date.now() - run.endedAt > 4000)) { GHOST.clear(); return [] }
+  const out = []
+  for (const [id, g] of GHOST) { if (byId(id)) GHOST.delete(id); else out.push(g) }
+  return out
+}
+const ghostShown = () => (S.source === 'all' || S.source === 'pinterest') && !S.via && !S.q && !S.tag && !S.unsorted && !S.kind && !S.type && !S.fmt && !S.color && !S.newOnly && !S.similar && !S.smart
 function impTick(item, result) {
   const run = IMP.run
   if (!run || run.finished || !item || item.k !== 'pin') return
@@ -4806,15 +4840,16 @@ function renderImpProgress() {
   if (!run) return
   const doneOf = b => b.error || (b.added != null && b.got >= b.added)
   run.finished = !!run.stopped || run.boards.every(doneOf)
+  if (run.finished && !run.endedAt) { run.endedAt = Date.now(); setTimeout(render, 4500) } // shown-but-not-stored pins go after that
   const got = run.boards.reduce((n, b) => n + b.got, 0)
   renderImpPill(run, got)
   if (!box || $('#import').hidden || IMP.view !== 'progress') return // the box may be showing another import (YouTube, Instagram) right now
   if (run.finished) IMP.did.pinterest = plural(run.boards.reduce((n, b) => n + b.got, 0), 'pin')
   const head = run.stopped ? 'Import stopped' : run.finished ? 'Your boards are in' : 'Bringing in your boards'
-  const lead = run.stopped ? `${plural(got, 'pin')} are in your library. Boards that hadn’t finished were unfollowed. Import again whenever you like.` : run.finished ? `${plural(got, 'pin')} from ${plural(run.boards.length, 'board')} are in your library. New pins on these boards will arrive by themselves.` : 'Pins land in your library as they arrive. You can close this: it carries on while Dailies is open.'
+  const lead = run.stopped ? `${plural(got, 'pin')} are in your library. Boards that hadn’t finished were unfollowed. Import again whenever you like.` : run.finished ? `${plural(got, 'pin')} from ${plural(run.boards.length, 'board')} are in your library. New pins on these boards will arrive by themselves.` : 'Pins show up on your wall straight away and are saved into your library behind them.'
   if (!box.firstChild || box.dataset.state !== String(run.finished) || !box.querySelector('.imp-strip')) {
     box.dataset.state = String(run.finished)
-    box.innerHTML = `${impArt(['pinterest'], run.finished)}<h2></h2><p class="imp-lead"></p><div class="imp-strip"></div><div class="imp-rows"></div><p class="imp-note" hidden></p>${impFootHtml('data-close-imp', !run.finished)}`
+    box.innerHTML = `${impArt(['pinterest'], run.finished)}<h2></h2><p class="imp-lead"></p><div class="imp-strip"></div><div class="imp-rows"></div>${run.finished ? '' : BG_NOTE}<p class="imp-note" hidden></p>${impFootHtml('data-close-imp', !run.finished)}`
     wireImpMore(box)
     box.querySelector('[data-imp-stop]')?.addEventListener('click', stopPinImport)
     box.querySelector('[data-close-imp]').onclick = () => { closeTop(); if (got) { S.source = 'pinterest'; S.board = null; S.via = null; render() } }
@@ -4844,6 +4879,7 @@ function renderImpProgress() {
 }
 // a small pill at the bottom while boards are still being brought in with the Import screen closed: you can keep working
 // what Dailies is waiting on right now; the bar along the top shows while any of it is going
+const PLATFORM_TABS = ['pinterest', 'instagram', 'youtube']
 function busyWhy() {
   const w = []
   if (IMP.run && !IMP.run.finished) w.push('import')
@@ -4872,7 +4908,7 @@ function renderImpPill(run, got) {
   const show = run && !run.finished && $('#import').hidden
   if (show) {
     const total = run.boards.reduce((n, b) => n + Math.max(b.count || 0, b.got), 0)
-    pill.innerHTML = `<i class="spin"></i>Bringing in pins · ${got.toLocaleString()}${total ? ` of ${total.toLocaleString()}` : ''}<span>View</span>`
+    pill.innerHTML = `<i class="spin"></i>Importing in the background · ${got.toLocaleString()}${total ? ` of ${total.toLocaleString()}` : ''}<span>View</span>`
   }
   pill.hidden = !show
 }
@@ -5266,6 +5302,7 @@ $('#shelf-row').addEventListener('click', e => {
 function render() {
   const terms = searchTerms(S.q)
   S.filtered = S.refs.filter(r => matches(r, { terms: S.smart ? [] : terms }))
+  if (ghostShown()) S.filtered = S.filtered.concat(ghostList().filter(g => !S.board || g.board === S.board))
   if (S.smart) { const rank = new Map(S.smart.ids.map((id, i) => [id, i])); S.filtered = S.filtered.filter(r => rank.has(r.id)).sort((a, b) => rank.get(a.id) - rank.get(b.id)) }
   // order: newest first (as stored), oldest first, or a shuffle that stays put until you shuffle again
   if (!S.smart && !S.similar) {
@@ -5300,8 +5337,10 @@ function render() {
     if (!allHides(r, terms, null)) total++ // (the All count stays the same while Slack or Notes is open)
     if (r.board) { boardCounts[r.board] = (boardCounts[r.board] || 0) + 1; boardSrc[r.board] ||= r.source }
   }
-  // the apps, always in this order: Pinterest, Instagram, Twitter, YouTube (then Stills & Videos)
-  const order = ['pinterest', 'instagram', 'twitter', 'youtube'].filter(k => counts[k] || S.source === k)
+  { const gn = ghostList().length; if (gn) { total += gn; counts.pinterest = (counts.pinterest || 0) + gn } } // pins on their way count already
+  // the apps you import from are always there, with 0 until something arrives, so the bar never reshuffles (Rohit, 26 Oct:
+  // a library from one platform made the phone's bar jump); X follows them once it has references
+  const order = [...PLATFORM_TABS, ...['twitter'].filter(k => counts[k] || S.source === k)]
   const boards = Object.keys(boardCounts).sort((a, b) => boardCounts[b] - boardCounts[a])
   // each Pinterest board you follow gets its own chip, after the sources
   const plain = !S.board && !S.via
@@ -5375,7 +5414,15 @@ function render() {
   renderRediscover()
   const empty = $('#empty')
   if (!S.loaded) return
-  if (!S.refs.length) {
+  const onlyPlatform = PLATFORM_TABS.includes(S.source) && !S.board && !S.via && !S.q && !S.tag && !S.kind && !S.type && !S.color && !S.newOnly && !S.similar && !S.smart
+  const working0 = IMP.run && !IMP.run.finished
+  if (onlyPlatform && !S.filtered.length && !(working0 && S.source === 'pinterest')) {
+    empty.hidden = false
+    empty.classList.remove('working')
+    const name = info(S.source).label, can = S.canWrite && !window.DAILIES_DESKTOP
+    empty.innerHTML = `<h2>No ${esc(name)} references yet</h2><p>${S.source === 'pinterest' ? 'Bring in your boards and new pins arrive by themselves.' : S.source === 'instagram' ? 'Bring in your saved collections, or save a post or reel with the extension.' : 'Bring in a playlist, or save a video with the extension or by pasting its link.'}</p>${can ? `<button class="btn primary" id="empty-imp" type="button">Import from ${esc(name)}</button>` : ''}`
+    if (can) $('#empty-imp').onclick = () => { const k = S.source; openImport(false); impGo(k); if (k === 'pinterest' && pinUser() && !IMP.boards && !IMP.busy) findPinBoards(pinUser()) }
+  } else if (!S.refs.length && !S.filtered.length) {
     empty.hidden = false
     const working = IMP.run && !IMP.run.finished
     empty.classList.toggle('working', !!working)
@@ -5785,9 +5832,10 @@ function buildCard(r) {
     el.innerHTML = `${more}<div class="body"><div class="head">${glyph(r.source, true)}<span>${esc(whoOf(r))}</span></div><p class="big">${esc(titleOf(r))}</p>${note}${tags}<div class="meta"><span class="when">${ago(r.savedAt)}</span></div></div>`
     return el
   }
-  el.className = 'card' + (isNew(r) ? ' isnew' : '')
+  el.className = 'card' + (isNew(r) ? ' isnew' : '') + (r.ghost ? ' ghost' : '')
   const yp = ytPic(r)
-  const pic = r.image
+  const pic = r.ghost ? `<img alt="" decoding="async" draggable="false" referrerpolicy="no-referrer" src="${esc(r.ghostPic)}">`
+    : r.image
     ? `<img alt="" loading="lazy" decoding="async" draggable="false" src="${esc(wallSrc(r))}"${focusAttr(r)}>`
     : yp ? ytImg(yp, 'loading="lazy" decoding="async" draggable="false"')
     : `<div class="poster${r.preview === 'pending' && r.url ? ' coming' : ''}">${glyph(r.source)}<span class="code mono">${esc(r.url ? shortCode(r.url) : '')}</span></div>`
@@ -7095,6 +7143,7 @@ function openInbox() {
   })
   window.addEventListener('message', e => {
     if (e.source !== window || !e.data) return
+    if (e.data.type === 'dailies:pin-preview') addGhosts(e.data)
     if (e.data.type === 'dailies:ext') { S.ext = String(e.data.v || '1'); S.extGone = false; if (!$('#import').hidden && (IMP.view === 'home' || IMP.view === 'extension')) renderImport() } // the extension says hello (1.19 and later)
     if (e.data.type === 'dailies:ext-gone') { S.ext = null; S.extGone = true } // it was reloaded or updated while this page was open (1.28 and later)
     if (e.data.type === 'dailies:ig-pause') { S.igPause = e.data.until; if (!$('#import').hidden && IMP.view === 'instagram') renderIgRes(); if (!$('#import').hidden && IMP.view === 'igprog') impIgSoon() }
