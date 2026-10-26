@@ -564,6 +564,7 @@ body.canvas-mode #shuffle-btn, body.canvas-mode #export-btn, body.canvas-mode #r
 .btn:hover { background: var(--surface-3); }
 .btn:active { scale: .965; }
 .btn svg { width: 16px; height: 16px; }
+#import-btn svg, #import-btn svg path { fill: none !important; } /* the inbox icon is an outline, never filled in */
 .btn.primary { background: var(--text); color: var(--bg); border-color: transparent; }
 .btn.primary:hover { background: color-mix(in srgb, var(--text) 85%, var(--bg)); }
 .btn.danger { color: var(--danger); }
