@@ -4350,6 +4350,15 @@ const CHEV_R = '<svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d
 const BACK_IC = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>'
 const boardUrl = b => `https://www.pinterest.com/${b.user}/${b.board}/`
 const followedBoard = b => ((S.settings && S.settings.pinterest) || []).some(h => h.url === boardUrl(b))
+// a board whose pins are already in the library (imported before), by its address or its name
+const boardInLibrary = b => S.refs.some(r => r.source === 'pinterest' && (r.boardUrl ? r.boardUrl === boardUrl(b) : r.board === b.name))
+const boardEntry = b => ({ user: b.user, board: b.board, url: boardUrl(b), label: b.name, id: b.id, count: b.count || 0 })
+// boards you stopped following on purpose: they aren't followed again by themselves
+const unfollowedList = () => (S.settings && S.settings.unfollowed) || []
+async function markUnfollowed(urls, on = true) {
+  const cur = unfollowedList(), next = on ? [...new Set([...cur, ...urls])].slice(-500) : cur.filter(u => !urls.includes(u))
+  if (next.length !== cur.length || next.some((u, i) => u !== cur[i])) await setSetting({ unfollowed: next }).catch(() => {})
+}
 const plural = (n, w) => `${n.toLocaleString()} ${w}${n === 1 ? '' : 's'}`
 const impArt = (keys, still) => `<div class="imp-art${still ? ' still' : ''}" aria-hidden="true"><span class="lgs">${keys.map((k, i) => `<span class="lg" style="--i:${i}">${glyph(k, true)}</span>`).join('')}</span><span class="dots">${[0, 1, 2].map(i => `<i style="--i:${i}"></i>`).join('')}</span><span class="lg" style="--i:${keys.length + 1}"><img alt="" src="${$('.brand .mark').src}"></span></div>`
 
@@ -4645,6 +4654,7 @@ function renderPinRes() {
   const chosen = IMP.boards.filter(b => IMP.sel.has(b.id) && !followedBoard(b))
   const pins = chosen.reduce((n, b) => n + (b.count || 0), 0)
   box.innerHTML = `<div class="imp-bar"><b>${esc(IMP.user)} · ${plural(IMP.boards.length, 'board')}</b>${open.length ? `<button class="linkbtn" type="button" data-imp-all>${chosen.length === open.length ? 'Clear' : 'Select all'}</button>` : '<span>You follow all of them</span>'}</div>
+    ${open.length && IMP.boards.length - open.length ? `<p class="sline">${plural(IMP.boards.length - open.length, 'board')} already in your library and followed; new pins on them arrive by themselves.</p>` : ''}
     <div class="imp-boards">${IMP.boards.map((b, i) => {
       const had = followedBoard(b), on = !had && IMP.sel.has(b.id)
       const pics = [0, 1, 2].map(k => `<i${b.pics[k] ? ` style="background-image:url('${b.pics[k]}')"` : ''}></i>`).join('')
@@ -4716,6 +4726,14 @@ async function findPinBoards(raw) {
   else if (!(res.boards || []).length) IMP.err = `${user} has no public boards.`
   else {
     IMP.boards = res.boards
+    // boards whose pins are already here but that aren't followed (the followed list went missing once): followed again quietly,
+    // so they show as "Following" instead of being offered for a second import; a board you unfollowed on purpose stays as it is
+    const back = res.boards.filter(b => !followedBoard(b) && boardInLibrary(b) && !unfollowedList().includes(boardUrl(b)))
+    if (back.length) {
+      const have = (S.settings && S.settings.pinterest) || []
+      await setSetting({ pinterest: [...have, ...back.map(boardEntry)] }).catch(() => {})
+      sendBoards()
+    }
     IMP.sel = new Set(res.boards.filter(b => !followedBoard(b) && (!only || b.board === only)).map(b => b.id)) // all of them to start with: untick what you don't want
   }
   renderPinRes()
@@ -4735,6 +4753,7 @@ async function followBoards(add) {
   const fresh = add.filter(b => b && b.url && !have.some(h => h.url === b.url))
   if (!fresh.length) return
   await setSetting({ pinterest: [...have, ...fresh.map(({ pic, ...b }) => b)] })
+  await markUnfollowed(fresh.map(b => b.url), false)
   const run = IMP.run && !IMP.run.finished ? IMP.run : (IMP.run = { boards: [], pics: [], finished: false, startedAt: Date.now(), heard: false })
   for (const b of fresh) if (!run.boards.some(x => x.url === b.url)) run.boards.push({ ...b, pic: b.pic || '', got: 0, added: null, partial: false })
   run.finished = false; run.stopped = false; run.startedAt = Date.now()
@@ -4752,7 +4771,7 @@ async function stopPinImport() {
   run.stopped = true
   const open = run.boards.filter(b => !(b.error || (b.added != null && b.got >= b.added))).map(b => b.url)
   const have = (S.settings && S.settings.pinterest) || []
-  try { await setSetting({ pinterest: have.filter(b => !open.includes(b.url)) }) } catch { /* it stays followed: harmless */ }
+  try { await setSetting({ pinterest: have.filter(b => !open.includes(b.url)) }); await markUnfollowed(open) } catch { /* it stays followed: harmless */ }
   renderImpProgress()
 }
 function impTick(item, result) {
@@ -6149,6 +6168,7 @@ function knownBoard(name) {
 async function unfollowBoard(name) {
   const f = boardFollows(name)
   await setSetting({ [f.k]: f.list.filter(x => !f.match(x)) }).catch(() => {})
+  if (f.k === 'pinterest') await markUnfollowed(f.list.filter(f.match).map(x => x.url))
 }
 function closeMenu() {
   $('#cardmenu').hidden = true
@@ -7677,6 +7697,7 @@ function renderSettings() {
   body.querySelectorAll('[data-unboard]').forEach(btn => btn.onclick = async () => {
     const gone = (set.pinterest || [])[+btn.dataset.unboard]
     await setSetting({ pinterest: (set.pinterest || []).filter((_, i) => i !== +btn.dataset.unboard) })
+    if (gone) await markUnfollowed([gone.url])
     if (IMP.run) { IMP.run.boards = IMP.run.boards.filter(b => !gone || b.url !== gone.url); impProgressSoon() }
     sendBoards(true); toast('Stopped following. Its pins stay in your library.') })
   if (window.DAILIES_DESKTOP) wireMacSettings()
