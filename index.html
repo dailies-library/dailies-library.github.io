@@ -1009,11 +1009,12 @@ body.sites-mode .row1 { padding-bottom: 12px; }
 .sc-d.none { color: var(--faint); font-style: italic; }
 .site.sc .more, .site.sc .src { top: 14px; }
 .st-head { flex-wrap: wrap; align-items: center; row-gap: 10px; }
-.st-mode { display: inline-flex; padding: 3px; border-radius: 999px; background: var(--surface-2); }
-.st-mode button { height: 34px; padding: 0 14px; border: 0; border-radius: 999px; background: none; color: var(--muted); font-size: 14px; font-weight: 500; cursor: pointer; }
-.st-mode button .n { color: var(--faint); font-size: 12px; margin-left: 3px; }
-.st-mode button[aria-selected="true"] { background: var(--text); color: var(--bg); } .st-mode button[aria-selected="true"] .n { color: inherit; opacity: .6; }
-.st-price { display: inline-flex; gap: 2px; margin-left: auto; padding: 3px; border-radius: 999px; border: 1px solid var(--line); }
+.st-filt { display: inline-flex; align-items: center; gap: 8px; margin-left: auto; flex-wrap: wrap; }
+.st-fav { display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--line); background: none; color: var(--muted); font-size: 13px; cursor: pointer; }
+.st-fav svg { width: 15px; height: 15px; fill: none; }
+.st-fav .n { color: var(--faint); font-size: 12px; }
+.st-fav[aria-pressed="true"] { background: var(--text); color: var(--bg); border-color: var(--text); } .st-fav[aria-pressed="true"] svg { fill: currentColor; } .st-fav[aria-pressed="true"] .n { color: inherit; opacity: .6; }
+.st-price { display: inline-flex; gap: 2px; padding: 3px; border-radius: 999px; border: 1px solid var(--line); }
 .st-price button { height: 28px; padding: 0 12px; border: 0; border-radius: 999px; background: none; color: var(--muted); font-size: 13px; cursor: pointer; }
 .st-price button[aria-pressed="true"] { background: var(--surface-3); color: var(--text); }
 .sc-n .sc-sub { display: flex; align-items: center; gap: 6px; min-width: 0; overflow: visible; }
@@ -1023,11 +1024,14 @@ body.sites-mode .row1 { padding-bottom: 12px; }
 .sc-pr.freemium { color: #7cb4ff; background: rgba(124, 180, 255, .12); }
 .sc-pr.paid { color: #e8b25a; background: rgba(232, 178, 90, .12); }
 :root[data-theme="light"] .sc-pr.free { color: #13804f; } :root[data-theme="light"] .sc-pr.freemium { color: #2463c7; } :root[data-theme="light"] .sc-pr.paid { color: #9a6410; }
-.sc-add { position: absolute; top: 14px; right: 14px; z-index: 2; height: 30px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--line-2); background: var(--surface-2); color: var(--text); font-size: 13px; font-weight: 500; cursor: pointer; }
-.sc-add:hover { background: var(--text); color: var(--bg); border-color: var(--text); }
-.sc-add.on { background: none; border-color: transparent; color: var(--faint); cursor: default; }
-.site.sc.lib .sc-top { padding-right: 84px; }
-@media (max-width: 760px) { .st-price { margin-left: 0; } .site.sc.lib .sc-top { padding-right: 78px; } .sc-add { top: 12px; right: 12px; } }
+.sc-star { position: absolute; top: 12px; right: 12px; z-index: 2; width: 32px; height: 32px; border-radius: 999px; border: 0; background: none; color: var(--faint); display: grid; place-items: center; cursor: pointer; transition: color .15s, transform .15s; }
+.sc-star svg { width: 19px; height: 19px; fill: none; }
+.sc-star:hover { color: var(--text); }
+.sc-star.on { color: #f5c04a; } .sc-star.on svg { fill: currentColor; }
+.sc-star:active { transform: scale(.85); }
+.site.sc:not(.lib) .sc-star { right: 46px; }
+.site.sc .sc-top { padding-right: 76px; } .site.sc.lib .sc-top { padding-right: 40px; }
+@media (max-width: 760px) { .st-filt { margin-left: 0; } .site.sc .sc-top { padding-right: 70px; } .site.sc.lib .sc-top { padding-right: 36px; } .sc-star { top: 9px; right: 9px; } .site.sc:not(.lib) .sc-star { right: 42px; } }
 @media (max-width: 760px) {
   .st-wrap.logos { grid-template-columns: 1fr; gap: 8px; }
   .site.sc { padding: 12px 12px 13px; gap: 8px; }
@@ -9156,7 +9160,7 @@ const sitesOn = () => document.body.classList.contains('sites-mode')
 // anything else from its words; nothing clear means Other. Change them from the card's ⋯ menu: Dailies then remembers that
 // site's domain (settings.siteDomains) and every later save from it follows. Your own categories are settings.siteCatList.
 S.siteCat = lsGet('dailies.sitecat') || null
-S.siteMode = lsGet('dailies.sitemode') || null
+S.siteFav = !!lsGet('dailies.sitefav')
 S.sitePrice = lsGet('dailies.siteprice') || null
 const SITE_CATS = [['ads', 'Ads'], ['stock', 'Images & stock'], ['templates', 'Templates'], ['audio', 'Music & SFX'], ['fonts', 'Fonts'], ['tools', 'Tools'], ['inspiration', 'Inspiration'], ['learning', 'Learning']]
 const SITE_KNOWN = {
@@ -9237,14 +9241,15 @@ function renderSites() {
   const wrap = $('#st-wrap'); if (!wrap) return
   const terms = S.q.toLowerCase().split(/\s+/).filter(Boolean)
   const hay = r => [r.title, r.caption, r.note, r.domain, r.author, (r.tags || []).join(' ')].join(' ').toLowerCase()
-  const mineAll = S.refs.filter(isSite)
-  const mine = new Set(mineAll.map(r => libKey(r.url || '')))
-  // two sides: the websites you saved, and Discover (a ready-made library to add from); you start on Discover while yours is empty
-  const mode = S.siteMode || (S.siteMode = mineAll.length ? 'mine' : 'lib') // decided once: adding your first site from Discover keeps you there
-  const base = mode === 'lib' ? libRefs().sort((x, y) => x.title.localeCompare(y.title)) : mineAll.sort((x, y) => String(y.savedAt || '').localeCompare(String(x.savedAt || '')))
-  const price = S.sitePrice || null
+  // one list: the websites you saved (newest first), then the ready-made library (A to Z) minus the ones you already have.
+  // A star keeps a site in Favourites; the ones you saved yourself start starred (Rohit, 26 Oct: favourites as a filter, no separate Discover)
+  const saved = S.refs.filter(isSite).sort((x, y) => String(y.savedAt || '').localeCompare(String(x.savedAt || '')))
+  const have = new Set(saved.map(r => libKey(r.url || '')))
+  const base = [...saved, ...libRefs().filter(r => !have.has(libKey(r.url))).sort((x, y) => x.title.localeCompare(y.title))]
+  const favOnly = !!S.siteFav, price = S.sitePrice || null
   const priced = r => !price || (price === 'free' ? ['free', 'freemium'].includes(priceOf(r)) : priceOf(r) === 'paid')
-  const all = base.filter(r => terms.every(t => hay(r).includes(t)) && priced(r))
+  const all = base.filter(r => terms.every(t => hay(r).includes(t)) && priced(r) && (!favOnly || isFav(r)))
+  const favCount = base.filter(r => isFav(r) && priced(r) && terms.every(t => hay(r).includes(t))).length
   // categories: one or more per site, as chips with counts (Rohit picked the chips layout, 26 Oct)
   const catsOf = new Map(all.map(r => [r.id, siteCatsOf(r)]))
   const counts = {}
@@ -9252,25 +9257,29 @@ function renderSites() {
   const cats = [...siteCatList(), ['other', 'Other']]
   const pick = S.siteCat && cats.some(c => c[0] === S.siteCat) ? S.siteCat : null
   const list = pick ? all.filter(r => catsOf.get(r.id).includes(pick)) : all
-  const shownCats = cats.filter(([k]) => counts[k] || k === pick || (mode === 'mine' && k.startsWith('c-')))
-  const sig = [mode, price, pick, terms.join(' '), mine.size, JSON.stringify(counts), shownCats.map(c => c[1]).join(), list.map(r => r.id + (r.title || '') + (r.price || '') + catsOf.get(r.id).join()).join('|')].join('#')
+  const shownCats = cats.filter(([k]) => counts[k] || k === pick || k.startsWith('c-'))
+  const sig = [favOnly, price, pick, terms.join(' '), JSON.stringify(counts), favCount, shownCats.map(c => c[1]).join(), list.map(r => r.id + (r.title || '') + (r.price || '') + isFav(r) + catsOf.get(r.id).join()).join('|')].join('#')
   if (wrap.dataset.sig === sig && wrap.dataset.shown === '1') return
   wrap.dataset.sig = sig
   wrap.classList.add('logos')
   const first = wrap.dataset.shown !== '1'; wrap.dataset.shown = '1'
-  const head = `<div class="st-head"><div class="st-mode" role="tablist"><button type="button" role="tab" data-sitemode="mine" aria-selected="${mode === 'mine'}">Your websites <span class="n">${mineAll.length}</span></button><button type="button" role="tab" data-sitemode="lib" aria-selected="${mode === 'lib'}">Discover <span class="n">${SITE_LIB.length}</span></button></div>
-    <div class="st-price" role="group" aria-label="Price">${[['', 'Any price'], ['free', 'Free'], ['paid', 'Paid']].map(([k, l]) => `<button type="button" data-siteprice="${k}" aria-pressed="${(price || '') === k}">${l}</button>`).join('')}</div>
-    ${S.canWrite && mode === 'mine' && pick && pick.startsWith('c-') ? '<button class="linkbtn" type="button" data-sitecat-del>Remove this category</button>' : ''}</div>`
-  const chips = all.length || shownCats.length ? `<nav class="st-cats" aria-label="Website categories"><button class="tab" type="button" data-sitecat="" aria-pressed="${!pick}">All <span class="n">${all.length}</span></button>${shownCats.map(([k, l]) => `<button class="tab" type="button" data-sitecat="${esc(k)}" aria-pressed="${pick === k}">${esc(l)} <span class="n">${counts[k] || 0}</span></button>`).join('')}${S.canWrite && mode === 'mine' ? '<button class="tab st-add" type="button" data-sitecat-add>+ Add</button>' : ''}</nav>` : ''
-  const none = pick && !list.length ? `<div class="st-empty"><b>Nothing in ${esc(siteCatLabel(pick))}${price ? ' at that price' : ''} yet</b>${mode === 'mine' ? 'Open a website’s ⋯ menu and choose Categories to put it here, or add some from Discover.' : 'Try another category.'}</div>` : ''
+  const head = `<div class="st-head"><b>Websites</b><span>${list.length}${favOnly ? ' favourites' : ' sites'}</span>
+    <div class="st-filt"><button type="button" class="st-fav" data-sitefav aria-pressed="${favOnly}">${STAR_IC}Favourites <span class="n">${favCount}</span></button>
+    <div class="st-price" role="group" aria-label="Price">${[['', 'Any price'], ['free', 'Free'], ['paid', 'Paid']].map(([k, l]) => `<button type="button" data-siteprice="${k}" aria-pressed="${(price || '') === k}">${l}</button>`).join('')}</div></div>
+    ${S.canWrite && pick && pick.startsWith('c-') ? '<button class="linkbtn" type="button" data-sitecat-del>Remove this category</button>' : ''}</div>`
+  const chips = `<nav class="st-cats" aria-label="Website categories"><button class="tab" type="button" data-sitecat="" aria-pressed="${!pick}">All <span class="n">${all.length}</span></button>${shownCats.map(([k, l]) => `<button class="tab" type="button" data-sitecat="${esc(k)}" aria-pressed="${pick === k}">${esc(l)} <span class="n">${counts[k] || 0}</span></button>`).join('')}${S.canWrite ? '<button class="tab st-add" type="button" data-sitecat-add>+ Add</button>' : ''}</nav>`
   const card = (r, i) => {
-    const name = nameOf(r), about = siteAbout(r), pr = priceOf(r), have = r.lib && isMine(r.url, mine)
-    const act = r.lib ? (S.canWrite ? `<button class="sc-add${have ? ' on' : ''}" type="button" data-libadd="${esc(r.url)}"${have ? ' disabled' : ''}>${have ? '✓ Added' : '+ Add'}</button>` : '') : (S.canWrite ? MORE : '')
-    return `<article class="site sc${first ? ' enter' : ''}${r.lib ? ' lib' : ''}" data-id="${esc(r.id)}" data-url="${esc(r.url || '')}" style="--d:${Math.min(i, 20) * 30}ms">${act}<div class="sc-top"><span class="sc-logo"><b class="sc-l">${esc((name[0] || '?').toUpperCase())}</b><img alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" src="${esc(siteLogo(r))}" onload="if(this.naturalWidth<32)this.remove()" onerror="this.remove()"></span><div class="sc-n"><b>${esc(name)}</b><span class="sc-sub"><i class="sc-dm">${esc(r.domain || siteHost(r))}</i>${pr ? `<em class="sc-pr ${pr}">${PRICE_LABEL[pr]}</em>` : ''}</span></div></div><p class="sc-d${about ? '' : ' none'}">${esc(about || 'This site doesn’t describe itself.')}</p></article>`
+    const name = nameOf(r), about = siteAbout(r), pr = priceOf(r), fav = isFav(r)
+    const star = S.canWrite ? `<button class="sc-star${fav ? ' on' : ''}" type="button" data-sitestar="${esc(r.id)}" aria-pressed="${fav}" aria-label="${fav ? 'Remove from favourites' : 'Add to favourites'}" title="${fav ? 'Remove from favourites' : 'Add to favourites'}">${STAR_IC}</button>` : ''
+    return `<article class="site sc${first ? ' enter' : ''}${r.lib ? ' lib' : ''}" data-id="${esc(r.id)}" data-url="${esc(r.url || '')}" style="--d:${Math.min(i, 20) * 30}ms">${star}${!r.lib && S.canWrite ? MORE : ''}<div class="sc-top"><span class="sc-logo"><b class="sc-l">${esc((name[0] || '?').toUpperCase())}</b><img alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" src="${esc(siteLogo(r))}" onload="if(this.naturalWidth<32)this.remove()" onerror="this.remove()"></span><div class="sc-n"><b>${esc(name)}</b><span class="sc-sub"><i class="sc-dm">${esc(r.domain || siteHost(r))}</i>${pr ? `<em class="sc-pr ${pr}">${PRICE_LABEL[pr]}</em>` : ''}</span></div></div><p class="sc-d${about ? '' : ' none'}">${esc(about || 'This site doesn’t describe itself.')}</p></article>`
   }
-  const emptyMine = `<div class="st-empty"><b>${terms.length || price ? 'No websites match' : 'No websites yet'}</b>${terms.length || price ? 'Try other words or another price.' : 'Add ready-made sources from <button class="linkbtn" type="button" data-sitemode="lib">Discover</button>, or press Save and paste any website link.'}</div>`
-  wrap.innerHTML = head + chips + none + (list.length ? list.map(card).join('') : none ? '' : mode === 'lib' ? '<div class="st-empty"><b>Nothing in Discover matches</b>Try other words or another price.</div>' : emptyMine)
+  const empty = favOnly && !favCount ? '<div class="st-empty"><b>No favourites yet</b>Tap the star on any website to keep it here.</div>'
+    : `<div class="st-empty"><b>Nothing here${price ? ' at that price' : ''}</b>${pick && pick.startsWith('c-') ? 'Open a website’s ⋯ menu and choose Categories to put it here.' : 'Try other words, another category or another price.'}</div>`
+  wrap.innerHTML = head + chips + (list.length ? list.map(card).join('') : empty)
 }
+const STAR_IC = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3.6 2.6 5.3 5.8.8-4.2 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.2-4.1 5.8-.8z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>'
+// a site you saved is a favourite unless you unstarred it; a library site is a favourite once starred (starring saves it)
+const isFav = r => !r.lib && r.fav !== false
 // the name on a card: a library site's own name, else the cleaned-up page title
 const nameOf = r => r.lib ? r.title : (libOf(r) ? libOf(r)[0] : siteName(r))
 // ---- Discover: a ready-made library of sources for a creative team, to add to your own Websites in one tap
@@ -9411,7 +9420,6 @@ const libKey = u => { try { const x = new URL(u); return x.hostname.replace(/^ww
 const LIB_BY = new Map(SITE_LIB.map(e => [libKey(e[1]), e]))
 const libOf = r => LIB_BY.get(libKey(r.url || '')) || LIB_BY.get(siteHost(r)) || null
 const priceOf = r => r.price || (libOf(r) || [])[3] || null
-const isMine = (url, mine) => mine.has(libKey(url))
 // the site's own name from its page title ("Beautiful Free Images & Pictures | Unsplash" is Unsplash): the part that names the
 // domain, else a short first part, else the domain itself
 function siteName(r) {
@@ -9434,23 +9442,26 @@ function siteAbout(r) {
 const siteLogo = r => `https://www.google.com/s2/favicons?domain=${encodeURIComponent(siteHost(r))}&sz=128`
 const redrawSites = () => { $('#st-wrap').dataset.sig = ''; renderSites() }
 $('#st-wrap').addEventListener('click', async e => {
-  const md = e.target.closest('[data-sitemode]')
-  if (md) { S.siteMode = md.dataset.sitemode; lsSet('dailies.sitemode', S.siteMode); S.siteCat = null; lsSet('dailies.sitecat', ''); redrawSites(); window.scrollTo({ top: 0 }); return }
+  if (e.target.closest('[data-sitefav]')) { S.siteFav = !S.siteFav; lsSet('dailies.sitefav', S.siteFav); redrawSites(); return }
   const pr = e.target.closest('[data-siteprice]')
   if (pr) { S.sitePrice = pr.dataset.siteprice || null; lsSet('dailies.siteprice', S.sitePrice || ''); redrawSites(); return }
-  const la = e.target.closest('[data-libadd]')
-  if (la) {
+  const st = e.target.closest('[data-sitestar]')
+  if (st) {
     e.stopPropagation()
-    if (la.disabled || !S.canWrite) return
-    const e2 = SITE_LIB.find(x => x[1] === la.dataset.libadd); if (!e2) return
-    const [name, url, cats, price, about] = e2
-    la.disabled = true; la.textContent = 'Adding…'
+    if (!S.canWrite || st.dataset.busy) return
+    const id = st.dataset.sitestar, r = byId(id)
+    st.dataset.busy = '1'; st.classList.toggle('on'); st.setAttribute('aria-pressed', String(st.classList.contains('on'))) // seen at once
     try {
-      const res = await saveRef({ url })
-      if (res && res.id) await patch(res.id, { title: name, caption: about, siteCats: cats.split(' '), price })
-      la.classList.add('on'); la.textContent = '✓ Added'
-      toast(`Added ${name} to your websites`)
-    } catch (err) { la.disabled = false; la.textContent = '+ Add'; toast('Couldn’t add it: ' + (err.message || err)) }
+      if (r) await patch(r.id, { fav: !isFav(r) })
+      else { // a library site: starring saves it to your library, already sorted and priced
+        const e2 = SITE_LIB.find(x => 'lib:' + x[1] === id); if (!e2) return
+        const [name, url, cats, price, about] = e2
+        const res = await saveRef({ url })
+        if (res && res.id) await patch(res.id, { title: name, caption: about, siteCats: cats.split(' '), price, fav: true })
+        toast(`${name} is in your favourites`)
+      }
+    } catch (err) { toast('Couldn’t change it: ' + (err.message || err)) }
+    finally { delete st.dataset.busy; redrawSites() }
     return
   }
   const chip = e.target.closest('[data-sitecat]')
