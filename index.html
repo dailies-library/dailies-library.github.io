@@ -766,6 +766,9 @@ body.canvas-mode .tagdrawer, body.notes-mode .tagdrawer { display: none; }
 .tab[aria-pressed="true"] .n { color: color-mix(in srgb, var(--bg) 55%, transparent); }
 .tab.boardtab { text-transform: capitalize; }
 .tab.tagtab i { font-style: normal; color: var(--faint); margin-right: -4px; }
+.tab.crtab { color: var(--text); }
+.tdbreak { flex-basis: 100%; height: 0; } /* Creators start on a line of their own */
+.tdlabel { align-self: center; padding: 0 4px 0 2px; font-size: 12px; color: var(--faint); white-space: nowrap; }
 .tab.tagtab .tn { font: italic 700 1.36em/1 var(--tagface); letter-spacing: .005em; }
 .tab.tagtab[aria-pressed="true"] i { color: inherit; opacity: .5; }
 .tabtail { display: none; } /* (phones show it, see below) */
@@ -1558,6 +1561,10 @@ body.selecting .src { display: none; }
 .simgrid button { padding: 0; border: 0; border-radius: 8px; overflow: hidden; aspect-ratio: 3 / 4; background: var(--surface-2); cursor: pointer; }
 .simgrid img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform .3s ease; }
 .simgrid button:hover img { transform: scale(1.05); }
+
+/* the author in the panel, when you've saved from them more than once: a link to all of it (Creator memory) */
+.d-creator { padding: 0; border: 0; background: none; color: inherit; font: inherit; text-decoration: underline; text-decoration-color: var(--line-2); text-underline-offset: 3px; cursor: pointer; }
+.d-creator:hover { text-decoration-color: currentColor; }
 /* quick save: a link box under Save (or above the + button on phones); Enter saves straight away */
 .quick { position: fixed; z-index: 72; width: min(440px, calc(100vw - 24px)); padding: 12px; border-radius: 14px; background: var(--raised); border: 1px solid var(--line-2); box-shadow: var(--shadow); display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; } /* the column follows the panel's width, so Paste and Save stay inside it on phones */
 .quick .qrow { display: flex; align-items: center; gap: 8px; height: 44px; padding: 0 4px 0 12px; border-radius: 10px; background: var(--surface); border: 1px solid var(--line-2); }
@@ -5023,7 +5030,7 @@ function ghostList() {
   for (const [id, g] of GHOST) { if (byId(id)) GHOST.delete(id); else out.push(g) }
   return out
 }
-const ghostShown = () => (S.source === 'all' || S.source === 'pinterest') && !S.via && !S.q && !S.tag && !S.unsorted && !S.kind && !S.type && !S.fmt && !S.color && !S.newOnly && !S.similar && !S.smart
+const ghostShown = () => (S.source === 'all' || S.source === 'pinterest') && !S.via && !S.q && !S.tag && !S.unsorted && !S.kind && !S.type && !S.fmt && !S.motion && !S.creator && !S.color && !S.newOnly && !S.similar && !S.smart
 function impTick(item, result) {
   const run = IMP.run
   if (!run || run.finished || !item || item.k !== 'pin') return
@@ -5270,7 +5277,7 @@ function maybeFirstSync() {
 }
 
 // ------------------------------------------------------------------ filtering + render
-function matches(r, { source = S.source, board = S.board, via = S.via, kind = S.kind, type = S.type, tag = S.tag, fmt = S.fmt, terms, keepSites = false } = {}) {
+function matches(r, { source = S.source, board = S.board, via = S.via, kind = S.kind, type = S.type, tag = S.tag, fmt = S.fmt, motion = S.motion, creator = S.creator, terms, keepSites = false } = {}) {
   if (source !== 'all' && tabOf(r) !== source) return false
   if (source === 'all' && !keepSites && allHides(r, terms, via)) return false
   if (via === 'stills' ? !isStillTab(r) : via === 'notes' ? r.kind !== 'note' : via && r.via !== via) return false
@@ -5281,6 +5288,8 @@ function matches(r, { source = S.source, board = S.board, via = S.via, kind = S.
   if (S.unsorted && ((r.tags || []).length || r.kind === 'note')) return false
   if (tag && !(r.tags || []).includes(tag)) return false
   if (fmt && !(r.ai && r.ai.f === fmt)) return false
+  if (motion && !motionOf(r).includes(motion)) return false
+  if (creator && creatorKey(r) !== creator) return false
   if (S.color && !colorsOf(r).has(S.color)) return false
   return !(terms && terms.length) || termsMatch(r, terms)
 }
@@ -5584,19 +5593,23 @@ function render() {
     `<button class="tab icontab stilltab" data-via="stills" aria-pressed="${S.via === 'stills'}" aria-label="Stills and videos, ${stillCount}" title="Stills & Videos · ${stillCount}">${STILL_IC}<span class="nm">Stills &amp; Videos</span></button>` +
     '<span class="div intabs"></span>' + (tailHtml + shuffleHtml).replace(/class="tab icontab/g, 'class="tab icontab intabs')
 
-  const types = {}, tags = {}, fmts = {}
+  const types = {}, tags = {}, fmts = {}, moves = {}, makers = new Map()
   for (const r of S.refs) {
-    if (matches(r, { kind: null, type: null, fmt: null, terms })) { const t = typeOf(r); types[t] = (types[t] || 0) + 1; if (r.ai && r.ai.f) fmts[r.ai.f] = (fmts[r.ai.f] || 0) + 1 }
+    if (matches(r, { kind: null, type: null, fmt: null, motion: null, terms })) { const t = typeOf(r); types[t] = (types[t] || 0) + 1; if (r.ai && r.ai.f) fmts[r.ai.f] = (fmts[r.ai.f] || 0) + 1; for (const m of motionOf(r)) moves[m] = (moves[m] || 0) + 1 }
+    if (matches(r, { creator: null, terms })) { const c = creatorOf(r); if (c) { const m = makers.get(c.k) || { name: c.name, n: 0 }; m.n++; makers.set(c.k, m) } }
     if (matches(r, { tag: null, terms })) for (const t of r.tags || []) tags[t] = (tags[t] || 0) + 1
   }
   const typeKeys = TYPE_ORDER.filter(t => types[t] || t === S.type)
   let tagKeys = Object.keys(tags).sort((a, b) => tags[b] - tags[a] || a.localeCompare(b)).slice(0, 60)
   if (S.tag && !tagKeys.includes(S.tag)) tagKeys.unshift(S.tag)
-  const showKinds = typeKeys.length > 1 || S.kind || S.type || S.fmt
+  // creators you've saved from at least twice, most first (Creator memory)
+  const crKeys = [...makers.keys()].filter(k => makers.get(k).n >= 2 || k === S.creator).sort((a, b) => makers.get(b).n - makers.get(a).n || makers.get(a).name.localeCompare(makers.get(b).name)).slice(0, 30)
+  const moveKeys = Object.keys(moves).sort((a, b) => moves[b] - moves[a])
+  const showKinds = typeKeys.length > 1 || S.kind || S.type || S.fmt || S.motion || moveKeys.length
   // the Type menu lists the same types as the labels on the pictures (Image, Video, GIF…),
   // then what Dailies saw each item is (carousel, tutorial…)
   const fmtKeys = Object.keys(fmts).sort((a, b) => fmts[b] - fmts[a])
-  S.menus = { kind: [...typeKeys.map(t => ['y:' + t, TYPE_PLURAL[t], types[t] || 0]), ...(fmtKeys.length ? [['—', 'What it is', '']] : []), ...fmtKeys.map(f => ['f:' + f, cap1(f), fmts[f]])], tag: tagKeys.map(t => [t, '#' + t, tags[t] || 0]) }
+  S.menus = { kind: [...typeKeys.map(t => ['y:' + t, TYPE_PLURAL[t], types[t] || 0]), ...(fmtKeys.length ? [['—', 'What it is', '']] : []), ...fmtKeys.map(f => ['f:' + f, cap1(f), fmts[f]]), ...(moveKeys.length ? [['—', 'In the video', '']] : []), ...moveKeys.map(m => ['m:' + m, cap1(m), moves[m]])], tag: tagKeys.map(t => [t, '#' + t, tags[t] || 0]) }
   const caret = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 8 8 8 8-8z"/></svg>'
   // your #tags sit with the other tabs on the left (board names are left out, they already have a tab);
   // past a dozen, the rest are reached from the hashtags row, ⌘K or search
@@ -5605,17 +5618,20 @@ function render() {
   $('#tagdrawer').classList.toggle('open', !!S.hashOpen)
   const sortChip = S.canWrite && (S.unsortedCount || S.unsorted) ? `<button class="tab sorttab" data-unsorted aria-pressed="${!!S.unsorted}" title="References without a hashtag yet">To sort <span class="n">${S.unsortedCount}</span></button><span class="div"></span>` : ''
   const found = brainSwitch() ? BR.groups.map((g, i) => [i, g.n, g.ids.filter(id => byId(id)).length]).filter(g => g[2] >= 3) : [] // groups Dailies' own search found
-  const tdSig = S.tag + '|' + S.unsorted + '|' + S.unsortedCount + '|' + tagKeys.map(t => t + tags[t]).join() + '|' + found.map(g => g[1] + g[2]).join() + '|' + (S.smart && S.smart.group)
+  const tdSig = S.tag + '|' + S.unsorted + '|' + S.unsortedCount + '|' + tagKeys.map(t => t + tags[t]).join() + '|' + found.map(g => g[1] + g[2]).join() + '|' + (S.smart && S.smart.group) + '|' + S.creator + '|' + [...makers].map(([k, m]) => k + m.n).join()
   if ($('#td-row').dataset.sig !== tdSig) {
     $('#td-row').dataset.sig = tdSig
     $('#td-row').innerHTML = (sortChip + tagKeys.map(t => `<button class="tab tagtab" data-tag="${esc(t)}" aria-pressed="${S.tag === t}"><i>#</i><span class="tn">${esc(t)}</span> <span class="n">${tags[t] || 0}</span></button>`).join('') || '<span class="hint">No hashtags yet</span>')
       + (found.length ? '<span class="div"></span>' + found.map(([i, n, c]) => `<button class="tab tagtab" data-group="${i}" aria-pressed="${!!(S.smart && S.smart.group === n)}" title="A group Dailies found: these look alike"><i>✦</i>${esc(n)} <span class="n">${c}</span></button>`).join('') : '')
+      + (crKeys.length ? '<span class="tdbreak"></span><span class="tdlabel">Creators</span>' + crKeys.map(k => `<button class="tab crtab" data-creator="${esc(k)}" aria-pressed="${S.creator === k}" title="Everything you saved from ${esc(makers.get(k).name)}">${esc(makers.get(k).name)} <span class="n">${makers.get(k).n}</span></button>`).join('') : '')
   }
+  if (S.creator && !S.hashOpen) navHtml += '<span class="div"></span>' +
+    `<button class="tab crtab" data-creator="${esc(S.creator)}" aria-pressed="true" title="Clear">${esc(creatorName(S.creator))} <span class="n">${makers.has(S.creator) ? makers.get(S.creator).n : creatorCount(S.creator)}</span><span class="x">×</span></button>`
   if (S.unsorted && !S.hashOpen) navHtml += `<button class="tab sorttab" data-unsorted aria-pressed="true" title="Clear">To sort <span class="n">${S.unsortedCount}</span><span class="x">×</span></button>`
   if (S.tag && !S.hashOpen) navHtml += '<span class="div"></span>' +
     `<button class="tab tagtab" data-tag="${esc(S.tag)}" aria-pressed="true" title="Clear"><i>#</i><span class="tn">${esc(S.tag)}</span> <span class="n">${tags[S.tag] || 0}</span><span class="x">×</span></button>`
   // apps and boards switch off by clicking them again (or All); Clear only shows once two or more other filters stack up
-  const stacked = [S.kind || S.type || S.fmt, S.tag, S.color, S.q || S.smart, S.similar, S.newOnly, S.unsorted].filter(Boolean).length
+  const stacked = [S.kind || S.type || S.fmt || S.motion, S.tag, S.creator, S.color, S.q || S.smart, S.similar, S.newOnly, S.unsorted].filter(Boolean).length
   $('#schips').innerHTML = special + (stacked >= 2 ? '<button type="button" class="tab clearall" data-clearall title="Clear every filter">× Clear</button>' : '')
   morphRow(nav, navHtml)
   morphRow($('#tabtail'), tailHtml + shuffleHtml)
@@ -5626,7 +5642,7 @@ function render() {
   morphRow($('#kinds'), `<button class="fdrop${S.sort !== 'new' && S.sort !== 'shuffle' ? ' on' : ''}" data-menu="sort" aria-haspopup="menu" title="Order">${SORT_ICON[S.sort]}<span class="wide">${SORT_LABEL[S.sort]}</span> ${caret}</button><button class="fdrop helpbtn" type="button" data-help aria-label="Help" title="How Dailies works"><svg viewBox="0 0 24 24" aria-hidden="true" class="sic"><path d="M9.2 9.2a3 3 0 1 1 4.6 2.5c-1 .6-1.8 1.2-1.8 2.3M12 17.6h.01" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/></svg><span class="wide">Help</span></button>`)
   // the type filter (All types / Images / Videos…) sits next to search, with shuffle and export
   $('#typeslot').hidden = !showKinds
-  morphRow($('#typeslot'), showKinds ? `<button class="fdrop${S.kind || S.type || S.fmt ? ' on' : ''}" data-menu="kind" aria-haspopup="menu" data-tip="Filter by type">${S.type ? tdot(S.type) + esc(TYPE_PLURAL[S.type]) : S.fmt ? esc(cap1(S.fmt)) : S.kind ? esc(KIND_PLURAL[S.kind] || S.kind) : '<span class="wide">All types</span><span class="narrow">Type</span>'} ${caret}</button>` : '')
+  morphRow($('#typeslot'), showKinds ? `<button class="fdrop${S.kind || S.type || S.fmt || S.motion ? ' on' : ''}" data-menu="kind" aria-haspopup="menu" data-tip="Filter by type">${S.type ? tdot(S.type) + esc(TYPE_PLURAL[S.type]) : S.fmt ? esc(cap1(S.fmt)) : S.motion ? esc(cap1(S.motion)) : S.kind ? esc(KIND_PLURAL[S.kind] || S.kind) : '<span class="wide">All types</span><span class="narrow">Type</span>'} ${caret}</button>` : '')
 
   renderTagHead()
   renderShelf()
@@ -5662,7 +5678,7 @@ function render() {
   } else if (!S.filtered.length) {
     empty.hidden = false
     empty.innerHTML = `<h2>No matches</h2><p>Nothing matches${S.q ? ` “${esc(S.q)}”` : ' these filters'}.</p><button class="btn" id="clear" type="button">Clear filters</button>`
-    $('#clear').onclick = () => { S.source = 'all'; S.board = null; S.via = null; S.kind = null; S.type = null; S.tag = null; S.newOnly = false; S.color = null; S.similar = null; S.smart = null; S.q = ''; $('#q').value = ''; render() }
+    $('#clear').onclick = () => { S.source = 'all'; S.board = null; S.via = null; S.kind = null; S.type = null; S.fmt = null; S.motion = null; S.creator = null; S.tag = null; S.newOnly = false; S.color = null; S.similar = null; S.smart = null; S.q = ''; $('#q').value = ''; render() }
   } else {
     empty.hidden = true
   }
@@ -5699,6 +5715,7 @@ function render() {
 S.hashOpen = false // starts shut every time, so the first click on Categories always opens it
 $('#td-row').addEventListener('click', e => {
   if (e.target.closest('[data-unsorted]')) { S.unsorted = !S.unsorted; render(); return }
+  const cr = e.target.closest('[data-creator]'); if (cr) { S.creator = S.creator === cr.dataset.creator ? null : cr.dataset.creator; render(); return }
   const t = e.target.closest('[data-tag]'); if (t) { S.tag = S.tag === t.dataset.tag ? null : t.dataset.tag; render() }
   const gb = e.target.closest('[data-group]') // a group Dailies found: shown like a search by meaning
   if (gb) { const g = BR.groups[+gb.dataset.group]; if (g) { const on = S.smart && S.smart.group === g.n; S.smart = on ? null : { q: g.n, group: g.n, ids: g.ids.filter(id => byId(id)) }; S.similar = null; S.tag = null; render() } }
@@ -5724,6 +5741,8 @@ const sourcesClick = e => {
   if (clr) { S[clr.dataset.clear] = null; if (clr.dataset.clear === 'smart') { S.q = ''; $('#q').value = '' } render(); return }
   const tag = e.target.closest('[data-tag]')
   if (tag) { S.tag = S.tag === tag.dataset.tag ? null : tag.dataset.tag; render(); return }
+  const cr = e.target.closest('[data-creator]')
+  if (cr) { S.creator = S.creator === cr.dataset.creator ? null : cr.dataset.creator; render(); return }
   const board = e.target.closest('[data-board]')
   if (board) { const r0 = S.refs.find(r => r.board === board.dataset.board); S.board = S.board === board.dataset.board ? null : board.dataset.board; S.source = (r0 && r0.source) || 'pinterest'; S.via = null; render(); return }
   const via = e.target.closest('[data-via]')
@@ -5893,7 +5912,7 @@ function openFilterMenu(anchor) {
     placeAt(menu, Math.max(8, Math.min(innerWidth - m.width - 8, a.right - m.width)), a.bottom + 6)
     return
   }
-  const cur = which === 'kind' ? (S.type ? 'y:' + S.type : S.fmt ? 'f:' + S.fmt : S.kind) : S.tag
+  const cur = which === 'kind' ? (S.type ? 'y:' + S.type : S.fmt ? 'f:' + S.fmt : S.motion ? 'm:' + S.motion : S.kind) : S.tag
   menu.innerHTML = `<button type="button" data-val=""${!cur ? ' aria-current="true"' : ''}>${which === 'kind' ? 'All types' : 'Any tag'}</button>` +
     S.menus[which].map(([v, label, n]) => v === '—' ? `<div class="mhead">${esc(label)}</div>` : `<button type="button" data-val="${esc(v)}"${cur === v ? ' aria-current="true"' : ''}><span>${v.startsWith('y:') ? tdot(v.slice(2)) : ''}${esc(label)}</span><span class="n">${n}</span></button>`).join('')
   menu.hidden = false
@@ -5905,7 +5924,7 @@ $('#tagmenu').addEventListener('click', e => {
   const which = $('#tagmenu').dataset.which, val = b.dataset.val || null
   if (which === 'sort') { $('#tagmenu').hidden = true; setSort(val); return }
   if (which === 'export') { $('#tagmenu').hidden = true; const only = $('#tagmenu').dataset.scope === 'sel' ? selRefs() : null; if (val === 'zip') downloadZip(only || []); else if (val === 'brief') exportBrief(only); else exportBoard(val, only); return }
-  if (which === 'kind') { S.type = val && val.startsWith('y:') ? val.slice(2) : null; S.fmt = val && val.startsWith('f:') ? val.slice(2) : null; S.kind = val && !/^[yf]:/.test(val) ? val : null }
+  if (which === 'kind') { S.type = val && val.startsWith('y:') ? val.slice(2) : null; S.fmt = val && val.startsWith('f:') ? val.slice(2) : null; S.motion = val && val.startsWith('m:') ? val.slice(2) : null; S.kind = val && !/^[yfm]:/.test(val) ? val : null }
   else S[which] = val
   $('#tagmenu').hidden = true
   render()
@@ -5940,7 +5959,7 @@ function layout() {
     const b = el.getBoundingClientRect()
     if (b.bottom > -300 && b.top < innerHeight + 300) before.set(el.dataset.id, { x: b.left - gr0.left, y: b.top - gr0.top, w: b.width })
   }
-  const fsig = [S.source, S.board, S.via, S.tag, S.type, S.kind, S.fmt, S.color, S.q, S.smart && S.smart.q, S.similar, S.newOnly, S.unsorted, S.sort, S.seed].join('|')
+  const fsig = [S.source, S.board, S.via, S.tag, S.type, S.kind, S.fmt, S.motion, S.creator, S.color, S.q, S.smart && S.smart.q, S.similar, S.newOnly, S.unsorted, S.sort, S.seed].join('|')
   const changed = S.lastFsig != null && fsig !== S.lastFsig // a different set of cards (not a new save arriving or a resize)
   S.lastFsig = fsig
   const w = grid.clientWidth || innerWidth
@@ -6741,7 +6760,9 @@ function fillDetail(r) {
   const orig = r.ai && r.ai.t && r.kind !== 'note' ? titleOf(r) : ''
   $('#d-orig').hidden = !orig || orig === r.ai.t
   $('#d-orig').textContent = orig
-  $('#d-by').textContent = [r.author, 'Saved ' + fullDate(r.savedAt)].filter(Boolean).join(' · ')
+  // the author, as a link to everything saved from them once there's more than one (Creator memory)
+  const cr = creatorOf(r), crN = cr ? creatorCount(cr.k) : 0
+  $('#d-by').innerHTML = [r.author ? (crN >= 2 ? `<button type="button" class="d-creator" data-creator="${esc(cr.k)}" title="See everything you saved from ${esc(cr.name)}">${esc(r.author)} · ${crN} saved</button>` : esc(r.author)) : '', 'Saved ' + esc(fullDate(r.savedAt))].filter(Boolean).join(' · ')
   if (document.activeElement !== $('#d-note')) $('#d-note').value = r.note || ''
   $('#d-note').readOnly = !S.canWrite
   $('#d-saved').textContent = ''
@@ -7564,6 +7585,8 @@ function requestPreviews() {
 // the round Refresh button beside search: new saves (Mac library on disk, Slack) and any previews still missing
 async function refreshAll() {
   if (S.refreshing) return
+  // a refresh starts from a clear view: the Categories row and an open hashtag or creator close (Rohit, 27 Oct)
+  if (S.hashOpen || S.tag || S.creator) { S.hashOpen = false; S.tag = null; S.creator = null; render() }
   S.refreshing = true; renderSync()
   const before = S.refs.length
   try {
@@ -12788,7 +12811,7 @@ const CK_IC = {
 }
 function filterTo(apply) {
   if (notesOn() || canvasOn()) showView('library')
-  Object.assign(S, { source: 'all', board: null, via: null, kind: null, type: null, tag: null, fmt: null, color: null, newOnly: false, unsorted: false, smart: null, similar: null, q: '' })
+  Object.assign(S, { source: 'all', board: null, via: null, kind: null, type: null, tag: null, fmt: null, motion: null, creator: null, color: null, newOnly: false, unsorted: false, smart: null, similar: null, q: '' })
   $('#q').value = ''
   apply()
   render()
@@ -12904,7 +12927,7 @@ $('#cmdk').addEventListener('mousedown', e => { if (e.target === e.currentTarget
 
 // ---- moodboard export: the references you're looking at, laid out as a contact sheet (PNG or PDF)
 function boardTitle() {
-  return S.tag ? '#' + S.tag : S.board ? S.board : S.type ? TYPE_PLURAL[S.type] : S.fmt ? cap1(S.fmt) : S.smart ? S.smart.q : S.q ? S.q
+  return S.tag ? '#' + S.tag : S.board ? S.board : S.type ? TYPE_PLURAL[S.type] : S.fmt ? cap1(S.fmt) : S.motion ? cap1(S.motion) : S.creator ? creatorName(S.creator) : S.smart ? S.smart.q : S.q ? S.q
     : S.newOnly ? 'New references' : S.unsorted ? 'To sort' : S.color ? cap1(S.color) : S.via === 'slack' ? 'From Slack' : S.via === 'notes' ? 'Notes' : S.via === 'stills' ? 'Stills & Videos' : S.source !== 'all' ? info(S.source).label : 'Dailies references'
 }
 async function exportBoard(fmt, only) {
@@ -13000,7 +13023,7 @@ function renderRediscover() {
   $('#redis').hidden = true // removed at the user's request
   return
   const sec = $('#redis')
-  const plain = S.loaded && S.source === 'all' && !S.board && !S.via && !S.kind && !S.type && !S.tag && !S.fmt && !S.color && !S.q && !S.smart && !S.similar && !S.newOnly
+  const plain = S.loaded && S.source === 'all' && !S.board && !S.via && !S.kind && !S.type && !S.tag && !S.fmt && !S.motion && !S.creator && !S.color && !S.q && !S.smart && !S.similar && !S.newOnly
   if (!plain || S.refs.length < 12) { sec.hidden = true; return }
   const now = Date.now(), DAY = 864e5
   let pool = S.refs.filter(r => r.image && now - new Date(r.savedAt) > 14 * DAY && !(opened[r.id] > now - 30 * DAY))
@@ -13905,5 +13928,25 @@ async function saveShared(meta, files) {
   }
   if (!media.length) toast('Dailies saves links, pictures and videos')
 }
+// ---- Creator memory: who you save from often (Rohit, 27 Oct). Worked out from each reference's author, so nothing new is
+// stored. Instagram and TikTok give "@handle", X gives "Name (@handle)", YouTube the channel's name; Pinterest pins have no maker.
+function creatorOf(r) {
+  const a = String(r.author || '').trim()
+  if (!a || r.source === 'pinterest' || r.kind === 'note') return null
+  const h = a.match(/\(@([\w.]+)\)\s*$/) || a.match(/^@([\w.]+)$/)
+  if (h) return { k: r.source + ':@' + h[1].toLowerCase(), name: '@' + h[1] }
+  return { k: r.source + ':' + a.toLowerCase(), name: a.slice(0, 60) }
+}
+const creatorKey = r => { const c = creatorOf(r); return c ? c.k : null }
+const creatorName = k => { for (const r of S.refs) { const c = creatorOf(r); if (c && c.k === k) return c.name } return k.replace(/^[^:]+:/, '') }
+const creatorCount = k => S.refs.filter(r => creatorKey(r) === k).length
+// what Dailies noted watching a video (fast cuts, push-in, music…): filters in the Type menu
+const motionOf = r => brainSwitch() ? BR.facts.get(r.id) || [] : []
+$('#d-by').addEventListener('click', e => {
+  const b = e.target.closest('[data-creator]'); if (!b) return
+  const k = b.dataset.creator
+  while (stack.length) closeTop()
+  filterTo(() => { S.creator = k })
+})
 </script>
 </body></html>
