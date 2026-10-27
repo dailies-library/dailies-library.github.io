@@ -9438,7 +9438,8 @@ function renderSites() {
   const archOn = !!S.siteArch, archCount = base.filter(isArch).length
   if (archOn && !archCount) S.siteArch = false
   const favOnly = !!S.siteFav && !S.siteArch, price = S.sitePrice || null
-  const priced = r => !price || (price === 'free' ? ['free', 'freemium'].includes(priceOf(r)) : priceOf(r) === 'paid')
+  // a site whose price isn't known shows under every price filter: only a known, different price hides it (Rohit, 27 Oct)
+  const priced = r => !price || !priceOf(r) || (price === 'free' ? ['free', 'freemium'].includes(priceOf(r)) : priceOf(r) === 'paid')
   const all = base.filter(r => terms.every(t => hay(r).includes(t)) && priced(r) && (S.siteArch ? isArch(r) : !isArch(r)) && (!favOnly || isFav(r)))
   const favCount = base.filter(r => isFav(r) && !isArch(r) && priced(r) && terms.every(t => hay(r).includes(t))).length
   // categories: one or more per site, as chips with counts (Rohit picked the chips layout, 26 Oct)
