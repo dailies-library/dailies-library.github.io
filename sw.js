@@ -8,6 +8,7 @@ const FILES = SUPA + '/storage/v1/object/authenticated/media/'
 const CACHED = SUPA + '/storage/v1/object/public/media/' // cache keys: the files' old public address, so pictures kept before stay kept
 const CACHE = 'dailies-media-v1'
 const SHARE = 'dailies-share' // what was shared from a phone's Share menu, until the page has saved it
+const KEEP_VIDEO = 20 * 1048576 // a video up to this size is kept in this browser after its first play (Dailies keeps whole only the small ones)
 
 self.addEventListener('install', () => self.skipWaiting())
 self.addEventListener('activate', e => e.waitUntil(self.clients.claim()))
@@ -17,6 +18,7 @@ let token = null
 let waiting = []
 self.addEventListener('message', e => {
   const m = e.data
+  if (m && m.type === 'dailies:claim') { e.waitUntil(self.clients.claim()); return } // a page that loaded without this worker (a hard reload)
   if (!m || m.type !== 'dailies:token') return
   const was = token
   token = m.token || null
@@ -53,6 +55,29 @@ async function fetchFile(path, range) {
   return res
 }
 
+// A video kept in this browser answers the parts a player asks for (Range), just as storage would, so it starts at once
+async function rangeOf(res, range) {
+  const blob = await res.blob(), size = blob.size
+  const m = /bytes=(\d*)-(\d*)/.exec(range || '')
+  let start = m && m[1] ? +m[1] : 0, end = m && m[2] ? +m[2] : size - 1
+  if (m && !m[1] && m[2]) { start = Math.max(0, size - +m[2]); end = size - 1 } // "the last n bytes"
+  end = Math.min(end, size - 1)
+  if (start >= size) return new Response(null, { status: 416, headers: { 'content-range': `bytes */${size}` } })
+  return new Response(blob.slice(start, end + 1), { status: 206, headers: { 'content-type': res.headers.get('content-type') || blob.type, 'content-range': `bytes ${start}-${end}/${size}`, 'content-length': String(end - start + 1), 'accept-ranges': 'bytes' } })
+}
+// the first time a video plays, the whole file is fetched once in the background and kept, so the next hover plays from here
+const keeping = new Set()
+async function keepWhole(path) {
+  if (keeping.has(path)) return
+  keeping.add(path)
+  try {
+    const res = await fetchFile(path)
+    if (res.status !== 200 || +(res.headers.get('content-length') || 0) > KEEP_VIDEO) return
+    const blob = await res.blob()
+    if (blob.size <= KEEP_VIDEO) await (await caches.open(CACHE)).put(CACHED + path, new Response(blob, { headers: { 'content-type': res.headers.get('content-type') || blob.type } }))
+  } catch { /* next time */ } finally { keeping.delete(path) }
+}
+
 // Shared to Dailies from a phone's Share menu (manifest share_target): keep the link, text and files, then open Dailies, which
 // saves them as soon as your library is ready (46-share-target.js). Kept here, so a share made while signed out isn't lost.
 async function receiveShare(req) {
@@ -78,14 +103,22 @@ self.addEventListener('fetch', e => {
   if (url.origin !== self.location.origin || !url.pathname.startsWith('/_blob/') || e.request.method !== 'GET') return
   const path = url.pathname.slice('/_blob/'.length)
   const range = e.request.headers.get('range')
-  if (range) { e.respondWith(fetchFile(path, range).then(safe)); return } // videos stream in parts
+  if (range) { // videos stream in parts: from this browser once kept, otherwise from storage while the whole file is kept for next time
+    e.respondWith((async () => {
+      const hit = await (await caches.open(CACHE)).match(CACHED + path)
+      if (hit) return safe(await rangeOf(hit, range))
+      try { e.waitUntil(keepWhole(path)) } catch { keepWhole(path) }
+      return safe(await fetchFile(path, range))
+    })())
+    return
+  }
   e.respondWith((async () => {
     const cache = await caches.open(CACHE)
     const hit = await cache.match(CACHED + path)
     if (hit) return safe(hit)
     const res = await fetchFile(path)
-    // ids never change, so a picture fetched once is kept; videos are left to the browser's own cache
-    if (res.status === 200 && !/^video\//.test(res.headers.get('content-type') || '')) cache.put(CACHED + path, res.clone()).catch(() => {})
+    // ids never change, so a file fetched once is kept (a video only up to KEEP_VIDEO)
+    if (res.status === 200 && (!/^video\//.test(res.headers.get('content-type') || '') || +(res.headers.get('content-length') || 0) <= KEEP_VIDEO)) cache.put(CACHED + path, res.clone()).catch(() => {})
     return safe(res)
   })())
 })

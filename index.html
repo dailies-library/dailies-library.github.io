@@ -1,4 +1,4 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="robots" content="noindex"><meta http-equiv="Content-Security-Policy" content="object-src 'none'; base-uri 'self'; form-action 'self'"><link rel="manifest" href="/manifest.webmanifest"><meta name="theme-color" content="#0b0b0c"><link rel="apple-touch-icon" href="/icons/apple-touch-icon.png"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Dailies"><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js" integrity="sha384-0w2KAL2YHP6wKOkUDzkCDGgVvfmHnj02DHeQ6XcHOgTfFsGyonKOpShMH1x6nk9o" crossorigin="anonymous"></script><script>// Dailies on the web: stands in for what claude.ai gives the page (window.claude.use(...)), using Supabase
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="robots" content="noindex"><meta http-equiv="Content-Security-Policy" content="object-src 'none'; base-uri 'self'; form-action 'self'"><link rel="preconnect" href="https://cthexlqrspcnbvylpmyg.supabase.co" crossorigin><link rel="manifest" href="/manifest.webmanifest"><meta name="theme-color" content="#0b0b0c"><link rel="apple-touch-icon" href="/icons/apple-touch-icon.png"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Dailies"><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js" integrity="sha384-0w2KAL2YHP6wKOkUDzkCDGgVvfmHnj02DHeQ6XcHOgTfFsGyonKOpShMH1x6nk9o" crossorigin="anonymous"></script><script>// Dailies on the web: stands in for what claude.ai gives the page (window.claude.use(...)), using Supabase
 // for sign-in, each person's private library (table `docs`) and their pictures and videos (bucket `media`).
 // Loaded after supabase-js and before the page's own script.
 (() => {
@@ -21,7 +21,7 @@
   const clone = v => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)))
   const err = (code, message) => Object.assign(new Error(message), { code })
   // pictures and videos are served from this site's /_blob/ address by sw.js, so canvases and exports can read them
-  if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(e => console.warn('no service worker', e))
+  const swReg = 'serviceWorker' in navigator ? navigator.serviceWorker.register('/sw.js').catch(e => { console.warn('no service worker', e); return null }) : Promise.resolve(null)
 
   // pictures and videos are private: sw.js fetches them with the signed-in person's token, which it gets from here
   // (on sign-in and every refresh, and again when it asks after being restarted); signing out clears it
@@ -40,7 +40,7 @@
   const signedIn = new Promise(resolve => {
     const done = session => { uid = session.user.id; W.email = session.user.email || ''; hideGate(); setTimeout(resolve, 0) } // the library loads outside the auth callback
     sb.auth.getSession().then(({ data }) => { tellWorker(data.session); if (data.session) done(data.session); else showGate() })
-    sb.auth.onAuthStateChange((event, session) => { tellWorker(session); if (session && !uid) done(session); if (event === 'SIGNED_OUT') location.reload() })
+    sb.auth.onAuthStateChange((event, session) => { tellWorker(session); if (session && !uid) done(session); if (event === 'SIGNED_OUT') W.forgetCopy().then(() => location.reload()) })
   })
   W.signOut = () => sb.auth.signOut()
   // the link-preview server function (supabase/functions/preview): the page sends the signed-in user's token with it
@@ -152,17 +152,47 @@
     }
     return out
   }
+  // ---- a copy of the library kept on this device (IndexedDB), so Dailies opens at once: the copy is shown first and the
+  // real library is read straight after, changes from elsewhere coming in as it arrives. Forgotten on sign-out and Start fresh.
+  const SNAP = 'dailies-library-copy'
+  const snapDb = () => new Promise((res, rej) => { const r = indexedDB.open(SNAP, 1); r.onupgradeneeded = () => r.result.createObjectStore('lib'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error) })
+  async function snapGet() {
+    try { const d = await snapDb(); return await new Promise(res => { const q = d.transaction('lib').objectStore('lib').get(uid); q.onsuccess = () => { d.close(); res(q.result || null) }; q.onerror = () => { d.close(); res(null) } }) } catch { return null }
+  }
+  let snapTimer = 0
+  const snapSoon = () => { clearTimeout(snapTimer); snapTimer = setTimeout(() => snapDb().then(d => { const t = d.transaction('lib', 'readwrite'); t.objectStore('lib').put({ at: Date.now(), all: clone(store) }, uid); t.oncomplete = t.onerror = () => d.close() }).catch(() => {}), 3000) }
+  W.forgetCopy = () => new Promise(res => { try { const r = indexedDB.deleteDatabase(SNAP); r.onsuccess = r.onerror = r.onblocked = () => res() } catch { res() } })
+  W.catchingUp = false // true while the real library is read after opening from the copy (the page treats what comes in as already there)
   async function loadAll() {
+    const copy = await snapGet()
+    if (copy && copy.all) {
+      for (const col of Object.keys(copy.all)) store[col] = copy.all[col]
+      for (const [col, id, row] of early) applyRow(col, id, row)
+      early.length = 0
+      loaded = true
+      W.catchingUp = true
+      setTimeout(() => W.reload().catch(e => console.warn('library not refreshed', e)).finally(() => { W.catchingUp = false; snapSoon() }), 0)
+      return
+    }
     const all = await fetchAll()
     for (const col of Object.keys(all)) store[col] = all[col]
     for (const [col, id, row] of early) applyRow(col, id, row) // changes that arrived while the library was loading
     early.length = 0
     loaded = true
+    snapSoon()
   }
   // pictures live at /_blob/, which only the service worker answers (GitHub Pages has no redirects): on a first visit the
   // library waits for it to take over the page (a moment; at most 4 s), so no picture shows up broken
-  const swReady = () => !('serviceWorker' in navigator) || navigator.serviceWorker.controller ? null
-    : new Promise(r => { navigator.serviceWorker.addEventListener('controllerchange', r, { once: true }); setTimeout(r, 4000) })
+  // A page loaded without it (the very first visit, or a hard reload) asks the worker to take over at once instead of waiting;
+  // where there is no worker at all, nothing waits.
+  const swReady = async () => {
+    if (!('serviceWorker' in navigator) || navigator.serviceWorker.controller) return
+    const reg = await swReg
+    if (!reg) return
+    const took = new Promise(r => { navigator.serviceWorker.addEventListener('controllerchange', r, { once: true }); setTimeout(r, 4000) })
+    navigator.serviceWorker.ready.then(r => r.active && r.active.postMessage({ type: 'dailies:claim' })).catch(() => {})
+    await took
+  }
   // a picture that was asked for before the service worker took over gets asked for again once it has
   if ('serviceWorker' in navigator && !navigator.serviceWorker.controller) navigator.serviceWorker.addEventListener('controllerchange', () => {
     setTimeout(() => { for (const img of document.querySelectorAll('img[src^="/_blob/"]')) if (img.complete && !img.naturalWidth) { const src = img.src; img.src = ''; img.src = src } }, 50)
@@ -262,6 +292,7 @@
   function toastLater(m) { if (Date.now() - toastAt > 15000 && window.toast) { toastAt = Date.now(); window.toast(m) } }
 
   function notify(col) {
+    snapSoon()
     if (queued.has(col)) return
     queued.add(col)
     setTimeout(() => { queued.delete(col); for (const f of subs.get(col) || []) f() }, 0)
@@ -428,7 +459,7 @@
       if (e) throw e
     }
     for (const col of Object.keys(store)) delete store[col]
-    await Promise.all(['dailies-media-v1', 'dailies-share'].map(c => caches.delete(c).catch(() => false)))
+    await Promise.all(['dailies-media-v1', 'dailies-share'].map(c => caches.delete(c).catch(() => false)).concat(W.forgetCopy()))
     try { for (const k of Object.keys(localStorage)) if (/^dailies[.:]/.test(k) && k !== 'dailies:theme') localStorage.removeItem(k) } catch { /* no storage */ }
     return { files: files.length }
   }
@@ -1074,7 +1105,7 @@ body.sites-mode .row1 { padding-bottom: 12px; }
 .st-filt { display: inline-flex; align-items: center; gap: 8px; margin-left: auto; flex-wrap: wrap; }
 .st-cats .st-fav { display: inline-flex; align-items: center; gap: 6px; }
 .st-cats .st-fav svg { width: 14px; height: 14px; fill: none; }
-.st-cats .st-fav[aria-pressed="true"] { background: #ff4f6d; color: #fff; } .st-cats .st-fav[aria-pressed="true"] svg { fill: currentColor; } .st-cats .st-fav[aria-pressed="true"] .n { color: inherit; opacity: .75; }
+.st-cats .st-fav[aria-pressed="true"] { background: #f5b301; color: #1a1300; } .st-cats .st-fav[aria-pressed="true"] svg { fill: currentColor; } .st-cats .st-fav[aria-pressed="true"] .n { color: inherit; opacity: .75; }
 .st-price { display: inline-flex; gap: 2px; padding: 3px; border-radius: 999px; border: 1px solid var(--line); }
 .st-price button { height: 28px; padding: 0 12px; border: 0; border-radius: 999px; background: none; color: var(--muted); font-size: 13px; cursor: pointer; }
 .st-price button[aria-pressed="true"] { background: var(--surface-3); color: var(--text); }
@@ -1085,12 +1116,12 @@ body.sites-mode .row1 { padding-bottom: 12px; }
 .sc-pr.freemium { color: #7cb4ff; background: rgba(124, 180, 255, .12); }
 .sc-pr.paid { color: #e8b25a; background: rgba(232, 178, 90, .12); }
 :root[data-theme="light"] .sc-pr.free { color: #13804f; } :root[data-theme="light"] .sc-pr.freemium { color: #2463c7; } :root[data-theme="light"] .sc-pr.paid { color: #9a6410; }
-.sc-star { position: absolute; top: 12px; right: 12px; z-index: 2; width: 32px; height: 32px; border-radius: 999px; border: 0; background: none; color: var(--faint); display: grid; place-items: center; cursor: pointer; transition: color .15s, transform .15s; }
-.sc-star svg { width: 19px; height: 19px; fill: none; }
+.sc-star { position: absolute; top: 10px; right: 10px; z-index: 2; width: 38px; height: 38px; border-radius: 999px; border: 0; background: none; color: var(--faint); display: grid; place-items: center; cursor: pointer; transition: color .15s, transform .15s; }
+.sc-star svg { width: 24px; height: 24px; fill: none; }
 .sc-star:hover { color: var(--text); }
-.sc-star.on { color: #ff4f6d; } .sc-star.on svg { fill: currentColor; }
+.sc-star.on { color: #f5b301; } .sc-star.on svg { fill: currentColor; }
 .sc-star:active { transform: scale(.85); }
-.site.sc .sc-star { right: 46px; }
+.site.sc .sc-star { right: 44px; }
 .site.sc .sc-top { padding-right: 76px; }
 .st-cats .st-arch { display: inline-flex; align-items: center; gap: 6px; }
 .st-cats .st-arch svg { width: 14px; height: 14px; }
@@ -1230,7 +1261,7 @@ body.projects-mode .top { border-bottom-color: var(--line-2); }
 /* confetti */
 .confetti { position: fixed; inset: 0; z-index: 200; pointer-events: none; }
 @media (prefers-reduced-motion: reduce) { .card.enter { animation: none; } }
-.frame { position: relative; overflow: hidden; background: var(--surface-2); }
+.frame { position: relative; overflow: hidden; background: var(--ph, var(--surface-2)); } /* --ph: the picture's main colour, so a card never looks empty while its picture loads */
 .frame img { display: block; width: 100%; height: 100%; object-fit: cover; transition: transform .45s cubic-bezier(.2, .7, .2, 1); }
 .card:hover .frame img { transform: scale(1.035); }
 /* a stored video plays silently over its cover while you hover the card */
@@ -2531,7 +2562,7 @@ body { letter-spacing: -.005em; }
 .site.sc:hover { transform: none; background: var(--surface-3); }
 .sc-logo { border-radius: 10px; box-shadow: var(--ring); }
 .st-cats .st-fav[aria-pressed="true"] { background: var(--text); color: var(--bg); }
-.sc-star.on { color: #ff4f6d; }
+.sc-star.on { color: #f5b301; }
 /* Settings → Appearance */
 .look { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 4px 2px 14px; margin-bottom: 6px; border-bottom: 1px solid var(--line); }
 .look b { font-weight: 500; }
@@ -4354,7 +4385,8 @@ const STILL_HOSTS = /(^|\.)(shotdeck\.com|film-grab\.com|eyecannndy\.com|eyecand
 const STILL_SKIP = ['instagram', 'pinterest', 'twitter', 'tiktok', 'youtube', 'vimeo', 'behance', 'dribbble', 'threads']
 // a stills site's own front page (unsplash.com, pexels.com) is a website you keep; a single photo or film still from it is a still
 const sitePage = r => { try { const u = new URL(r.url); return /^\/?$/.test(u.pathname) && !u.search } catch { return false } }
-const isStill = r => !!r && (r.still === true || (STILL_HOSTS.test(r.domain || '') && !sitePage(r)) || (r.kind === 'image' && r.via === 'extension' && !STILL_SKIP.includes(r.source)))
+// (a page of a stills site that you filed in a website category, like frameset.app/stills, is a website too)
+const isStill = r => !!r && (r.still === true || (STILL_HOSTS.test(r.domain || '') && !sitePage(r) && !(r.siteCats && r.siteCats.length)) || (r.kind === 'image' && r.via === 'extension' && !STILL_SKIP.includes(r.source)))
 // a still site's tab title, without the site's name: "Her (2013) | FILMGRAB" → "Her (2013)"
 const stillTitle = (t, host) => STILL_HOSTS.test(host || '') ? t.replace(/\s*[|·•\-–—]\s*(shotdeck|film-?grab|eyecannndy|frameset|flim|shot\.?cafe|movie ?stills ?db|screen ?musings)\b.*$/i, '').trim() || t : t
 const STILL_IC = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2.4" fill="none" stroke="currentColor" stroke-width="2"/><rect x="7.2" y="8.2" width="9.6" height="7.6" rx="1" fill="none" stroke="currentColor" stroke-width="2"/></svg>' // a picture frame
@@ -5161,7 +5193,8 @@ function inOrder(db) {
   if (!S.canWrite) { $('#add-btn').hidden = true }
 
   db.collection('refs').orderBy('savedAt', 'desc').limit(1000).onSnapshot(snap => {
-    const known = S.loaded ? new Set(S.refs.map(r => r.id)) : null
+    const catchingUp = !!(window.DAILIES_WEB_API && window.DAILIES_WEB_API.catchingUp) // opened from this device's copy, now reading the real library
+    const known = S.loaded && !catchingUp ? new Set(S.refs.map(r => r.id)) : null
     S.refs = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(r => !(S.gone && S.gone.has(r.id))) // still being deleted: never flickers back
     webPreviewsSoon()
     if (known) setTimeout(() => newSaves(S.refs.filter(r => !known.has(r.id)), known.size), 0)
@@ -5172,7 +5205,7 @@ function inOrder(db) {
     S.loaded = true
     render()
     openInbox()
-    if (first) { $('#import-btn').hidden = !S.canWrite || !!window.DAILIES_DESKTOP; maybeWelcome(); startProjects(); setTimeout(thumbBackfill, 12000); receiveShared().catch(() => {}) }
+    if (first) { $('#import-btn').hidden = !S.canWrite || !!window.DAILIES_DESKTOP; maybeWelcome(); startProjects(); setTimeout(thumbBackfill, 12000); receiveShared().catch(() => {}); warmWall() }
     if (projectsOn()) renderProjects()
     if (S.detail) refreshDetail()
     if (notesOn()) { decorateRefs(); if ($('#notes-view').classList.contains('lib-open')) renderNtLib() }
@@ -5986,6 +6019,8 @@ function ytPic(r) {
 }
 const picOf = r => r.image ? wallSrc(r) : (ytPic(r) || {}).small || null // a stored picture, else YouTube's own small one
 const ytImg = (p, extra = '') => `<img alt="" ${extra} src="${esc(p.big)}" data-small="${esc(p.small)}" onerror="if(this.dataset.small){this.src=this.dataset.small;delete this.dataset.small}else this.remove()">`
+// the picture's main colour (a checked hex from its palette) behind it while it loads
+const phOf = r => { const c = r.image && Array.isArray(r.pal) ? String(r.pal[0] || '').split(':')[0] : ''; return /^#[0-9a-f]{6}$/i.test(c) ? `;--ph:${c}` : '' } // pal: "#hex:share", main colour first
 function buildCard(r) {
   const el = document.createElement('article')
   el.dataset.id = r.id
@@ -6012,7 +6047,7 @@ function buildCard(r) {
   el.setAttribute('aria-label', `${label}: ${headOf(r)}`)
   // only the picture and the platform icon show; details appear on hover
   el.innerHTML = `
-    ${more}<div class="frame" style="aspect-ratio:${(1 / ratio(r)).toFixed(4)}">${pic}
+    ${more}<div class="frame" style="aspect-ratio:${(1 / ratio(r)).toFixed(4)}${phOf(r)}">${pic}
       ${typePill(r)}
       <div class="info">
         ${r.ai && r.ai.t ? `<p class="title">${esc(r.ai.t)}</p>` : silent(r) ? '' : `<p class="title">${esc(r.title || r.caption ? titleOf(r) : (r.preview === 'pending' ? 'Preview on its way' : titleOf(r)))}</p>`}
@@ -6968,6 +7003,18 @@ async function uploadImage(blob, { thumb = false } = {}) {
 }
 // the picture to show on the wall and in lists: the small copy when there is one
 const wallSrc = r => imgSrc(r.thumb || r.image)
+// On the website, the pictures of the first screens are fetched quietly after the wall shows, so scrolling down never waits
+// on them; sw.js keeps each one, so this happens once per picture per browser. Not on a data-saving connection.
+let wallWarm = false
+function warmWall() {
+  if (wallWarm || !window.DAILIES_WEB || (navigator.connection && navigator.connection.saveData)) return
+  wallWarm = true
+  const srcs = S.filtered.slice(0, 120).filter(r => r.image).map(wallSrc)
+  let i = 0
+  const one = async () => { while (i < srcs.length) { const s = srcs[i++]; try { await fetch(s) } catch { /* that one waits for the wall */ } } }
+  const go = () => { one(); one(); one() }
+  setTimeout(() => ('requestIdleCallback' in window ? requestIdleCallback(go, { timeout: 2000 }) : go()), 1200) // after the pictures on screen
+}
 // pictures stored before thumbnails existed get one, a few at a time while the page is open and you're not doing anything
 // (`thumb` undefined = not looked at yet; null = small enough as it is; an id = the small copy)
 let thumbsBusy = false
@@ -9414,10 +9461,10 @@ function renderSites() {
     <label class="gb-size st-size" title="${S.siteLayout === 'list' ? 'Row size' : 'Card size'}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h4v4H4zM10 4h4v4h-4zM16 4h4v4h-4zM4 10h4v4H4zM10 10h4v4h-4zM16 10h4v4h-4zM4 16h4v4H4zM10 16h4v4h-4zM16 16h4v4h-4z"/></svg><input type="range" id="st-size" min="0" max="100" step="2" value="${siteSize()}" aria-label="${S.siteLayout === 'list' ? 'Row size' : 'Card size'}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3h8v8H3zM13 3h8v8h-8zM3 13h8v8H3zM13 13h8v8h-8z"/></svg></label>
     <div class="st-price" role="group" aria-label="Price">${[['', 'Any price'], ['free', 'Free'], ['paid', 'Paid']].map(([k, l]) => `<button type="button" data-siteprice="${k}" aria-pressed="${(price || '') === k}">${l}</button>`).join('')}</div></div>
     ${S.canWrite && pick && pick.startsWith('c-') ? '<button class="linkbtn" type="button" data-sitecat-del>Remove this category</button>' : ''}</div>`
-  const chips = `<nav class="st-cats" aria-label="Website categories"><button class="tab" type="button" data-sitecat="" data-siteall aria-pressed="${!pick && !favOnly && !S.siteArch}">All <span class="n">${favOnly || S.siteArch ? base.filter(r => !isArch(r) && priced(r) && terms.every(t => hay(r).includes(t))).length : all.length}</span></button><button class="tab st-fav" type="button" data-sitefav aria-pressed="${favOnly}">${HEART_IC}Favourites <span class="n">${favCount}</span></button>${shownCats.map(([k, l]) => `<button class="tab" type="button" data-sitecat="${esc(k)}" aria-pressed="${pick === k}">${esc(l)} <span class="n">${counts[k] || 0}</span></button>`).join('')}${archCount ? `<button class="tab st-arch" type="button" data-sitearch aria-pressed="${!!S.siteArch}">${ARCHIVE_IC}Archived <span class="n">${archCount}</span></button>` : ''}${S.canWrite ? '<button class="tab st-add" type="button" data-sitecat-add>+ Add</button>' : ''}</nav>`
+  const chips = `<nav class="st-cats" aria-label="Website categories"><button class="tab" type="button" data-sitecat="" data-siteall aria-pressed="${!pick && !favOnly && !S.siteArch}">All <span class="n">${favOnly || S.siteArch ? base.filter(r => !isArch(r) && priced(r) && terms.every(t => hay(r).includes(t))).length : all.length}</span></button><button class="tab st-fav" type="button" data-sitefav aria-pressed="${favOnly}">${STAR_IC}Favourites <span class="n">${favCount}</span></button>${shownCats.map(([k, l]) => `<button class="tab" type="button" data-sitecat="${esc(k)}" aria-pressed="${pick === k}">${esc(l)} <span class="n">${counts[k] || 0}</span></button>`).join('')}${archCount ? `<button class="tab st-arch" type="button" data-sitearch aria-pressed="${!!S.siteArch}">${ARCHIVE_IC}Archived <span class="n">${archCount}</span></button>` : ''}${S.canWrite ? '<button class="tab st-add" type="button" data-sitecat-add>+ Add</button>' : ''}</nav>`
   const card = (r, i) => {
     const name = nameOf(r), about = siteAbout(r), pr = priceOf(r), fav = isFav(r)
-    const star = S.canWrite ? `<button class="sc-star${fav ? ' on' : ''}" type="button" data-sitestar="${esc(r.id)}" aria-pressed="${fav}" aria-label="${fav ? 'Remove from favourites' : 'Add to favourites'}" title="${fav ? 'Remove from favourites' : 'Add to favourites'}">${HEART_IC}</button>` : ''
+    const star = S.canWrite ? `<button class="sc-star${fav ? ' on' : ''}" type="button" data-sitestar="${esc(r.id)}" aria-pressed="${fav}" aria-label="${fav ? 'Remove from favourites' : 'Add to favourites'}" title="${fav ? 'Remove from favourites' : 'Add to favourites'}">${STAR_IC}</button>` : ''
     return `<article class="site sc${first ? ' enter' : ''}${r.lib ? ' lib' : ''}" data-id="${esc(r.id)}" data-url="${esc(r.url || '')}" style="--d:${Math.min(i, 20) * 30}ms">${isArch(r) ? '' : star}${S.canWrite ? MORE : ''}<div class="sc-top"><span class="sc-logo"><b class="sc-l">${esc((name[0] || '?').toUpperCase())}</b><img alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" src="${esc(siteLogo(r))}" onload="if(this.naturalWidth<32)this.remove()" onerror="this.remove()"></span><div class="sc-n"><b>${esc(name)}</b><span class="sc-sub"><i class="sc-dm">${esc(r.domain || siteHost(r))}</i>${pr ? `<em class="sc-pr ${pr}">${PRICE_LABEL[pr]}</em>` : ''}</span></div></div><p class="sc-d${about ? '' : ' none'}">${esc(about || 'This site doesn’t describe itself.')}</p></article>`
   }
   const empty = S.siteArch ? '<div class="st-empty"><b>Nothing archived</b></div>' : favOnly && !favCount ? '<div class="st-empty"><b>No favourites yet</b>Tap the star on any website to keep it here.</div>'
@@ -9465,7 +9512,8 @@ function openLibMenu(url, anchor) {
   const a = anchor.getBoundingClientRect(), m = menu.getBoundingClientRect()
   placeAt(menu, Math.max(8, Math.min(innerWidth - m.width - 8, a.right - m.width)), a.bottom + 6 + m.height > innerHeight ? a.top - m.height - 6 : a.bottom + 6)
 }
-const HEART_IC = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.2s-7.6-4.6-7.6-10.3A4.4 4.4 0 0 1 12 7.1a4.4 4.4 0 0 1 7.6 2.8c0 5.7-7.6 10.3-7.6 10.3z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>'
+// favourites are a star (Rohit, 27 Oct: a star, and bigger, instead of the heart)
+const STAR_IC = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.2l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17.2l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>'
 // a site you saved is a favourite unless you unstarred it; a library site is a favourite once starred (starring saves it)
 const isFav = r => !r.lib && r.fav !== false
 // the name on a card: a library site's own name, else the cleaned-up page title
