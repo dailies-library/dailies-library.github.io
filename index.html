@@ -1,4 +1,4 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="robots" content="noindex"><meta http-equiv="Content-Security-Policy" content="object-src 'none'; base-uri 'self'; form-action 'self'"><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js" integrity="sha384-0w2KAL2YHP6wKOkUDzkCDGgVvfmHnj02DHeQ6XcHOgTfFsGyonKOpShMH1x6nk9o" crossorigin="anonymous"></script><script>// Dailies on the web: stands in for what claude.ai gives the page (window.claude.use(...)), using Supabase
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="robots" content="noindex"><meta http-equiv="Content-Security-Policy" content="object-src 'none'; base-uri 'self'; form-action 'self'"><link rel="manifest" href="/manifest.webmanifest"><meta name="theme-color" content="#0b0b0c"><link rel="apple-touch-icon" href="/icons/apple-touch-icon.png"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Dailies"><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js" integrity="sha384-0w2KAL2YHP6wKOkUDzkCDGgVvfmHnj02DHeQ6XcHOgTfFsGyonKOpShMH1x6nk9o" crossorigin="anonymous"></script><script>// Dailies on the web: stands in for what claude.ai gives the page (window.claude.use(...)), using Supabase
 // for sign-in, each person's private library (table `docs`) and their pictures and videos (bucket `media`).
 // Loaded after supabase-js and before the page's own script.
 (() => {
@@ -5151,7 +5151,7 @@ function inOrder(db) {
     S.loaded = true
     render()
     openInbox()
-    if (first) { $('#import-btn').hidden = !S.canWrite || !!window.DAILIES_DESKTOP; maybeWelcome(); startProjects(); setTimeout(thumbBackfill, 12000) }
+    if (first) { $('#import-btn').hidden = !S.canWrite || !!window.DAILIES_DESKTOP; maybeWelcome(); startProjects(); setTimeout(thumbBackfill, 12000); receiveShared().catch(() => {}) }
     if (projectsOn()) renderProjects()
     if (S.detail) refreshDetail()
     if (notesOn()) { decorateRefs(); if ($('#notes-view').classList.contains('lib-open')) renderNtLib() }
@@ -13687,5 +13687,47 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && S.sel.size && !typing) { e.preventDefault(); clearSel(); return }
   // no other keys: Rohit asked for no shortcuts beyond undo, redo and delete on the canvas
 })
+// ------------------------------------------------------------------ shared from a phone's Share menu
+// Added to a phone's home screen, Dailies is in the Share menu (Android). sw.js keeps what was shared (a link, its text,
+// pictures or videos) and opens /?shared=1; it is saved here as soon as your library is ready, straight away with no extra
+// step, and kept until then (a share made while signed out lands once you sign in).
+async function receiveShared() {
+  if (!window.DAILIES_WEB || !('caches' in window)) return
+  if (/[?&]shared=1/.test(location.search)) history.replaceState(null, '', location.pathname)
+  const box = await caches.open('dailies-share').catch(() => null)
+  if (!box || !S.canWrite || !S.db) return
+  for (const req of (await box.keys()).filter(r => r.url.endsWith('/meta'))) {
+    const meta = await box.match(req).then(r => r.json()).catch(() => null)
+    await box.delete(req) // once only, even if saving fails below
+    if (!meta) continue
+    const files = []
+    for (const f of meta.files || []) {
+      const res = await box.match(f.key); await box.delete(f.key)
+      if (res) files.push(new File([await res.blob()], f.name || 'shared', { type: f.type || 'application/octet-stream' }))
+    }
+    try { await saveShared(meta, files) } catch (e) { toast('Couldn’t save what you shared: ' + (e.message || e.code || e)) }
+  }
+}
+async function saveShared(meta, files) {
+  const text = [meta.text, meta.url].filter(Boolean).join(' ')
+  const links = linksIn(text)
+  const note = String(meta.text || '').replace(/https?:\/\/[^\s<>"'`]+/g, '').trim().slice(0, 2000)
+  const media = files.filter(f => /^(image|video)\//.test(f.type))
+  if (media.length) {
+    let last = null, ok = 0
+    for (const f of media) {
+      try { last = f.type.startsWith('video/') ? await saveVideoFile(f) : (await saveRef({ image: f, note: links.length ? '' : note })).id; ok++ }
+      catch (e) { toast('Couldn’t save ' + (f.name || 'that file') + ': ' + (e.message || e.code)) }
+    }
+    if (ok && !links.length) { toast(ok === 1 ? 'Saved to Dailies' : `Saved ${ok} to Dailies`, last ? { label: 'View', run: () => openDetail(last) } : undefined); return }
+  }
+  if (links.length > 1) { await saveLinks(links); return }
+  if (links.length === 1) {
+    const done = await saveRef({ url: links[0], note: note !== meta.title ? note : '' })
+    toast(done.dup ? 'Already in your library' : 'Saved to Dailies', { label: 'View', run: () => openDetail(done.id) })
+    return
+  }
+  if (!media.length) toast('Dailies saves links, pictures and videos')
+}
 </script>
 </body></html>

@@ -7,6 +7,7 @@ const KEY = 'sb_publishable_ghwozZU9ed1yKqzinYlkEA_wUcHbPF8' // the public key, 
 const FILES = SUPA + '/storage/v1/object/authenticated/media/'
 const CACHED = SUPA + '/storage/v1/object/public/media/' // cache keys: the files' old public address, so pictures kept before stay kept
 const CACHE = 'dailies-media-v1'
+const SHARE = 'dailies-share' // what was shared from a phone's Share menu, until the page has saved it
 
 self.addEventListener('install', () => self.skipWaiting())
 self.addEventListener('activate', e => e.waitUntil(self.clients.claim()))
@@ -52,8 +53,28 @@ async function fetchFile(path, range) {
   return res
 }
 
+// Shared to Dailies from a phone's Share menu (manifest share_target): keep the link, text and files, then open Dailies, which
+// saves them as soon as your library is ready (46-share-target.js). Kept here, so a share made while signed out isn't lost.
+async function receiveShare(req) {
+  const form = await req.formData().catch(() => null)
+  if (form) {
+    const box = await caches.open(SHARE)
+    const id = Date.now() + '-' + Math.random().toString(36).slice(2, 8)
+    const files = form.getAll('media').filter(f => f && typeof f !== 'string' && f.size && f.size <= 1024 * 1048576).slice(0, 10)
+    const meta = { title: String(form.get('title') || '').slice(0, 500), text: String(form.get('text') || '').slice(0, 5000), url: String(form.get('url') || '').slice(0, 2000), files: [] }
+    for (const [i, f] of files.entries()) {
+      const key = `/__share/${id}/${i}`
+      await box.put(key, new Response(f, { headers: { 'content-type': f.type || 'application/octet-stream' } }))
+      meta.files.push({ key, type: f.type || '', name: String(f.name || '').slice(0, 200) })
+    }
+    await box.put(`/__share/${id}/meta`, new Response(JSON.stringify(meta), { headers: { 'content-type': 'application/json' } }))
+  }
+  return Response.redirect('/?shared=1', 303)
+}
+
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url)
+  if (url.origin === self.location.origin && url.pathname === '/share-target' && e.request.method === 'POST') { e.respondWith(receiveShare(e.request)); return }
   if (url.origin !== self.location.origin || !url.pathname.startsWith('/_blob/') || e.request.method !== 'GET') return
   const path = url.pathname.slice('/_blob/'.length)
   const range = e.request.headers.get('range')
