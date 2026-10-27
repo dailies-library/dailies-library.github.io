@@ -2079,6 +2079,8 @@ body.notes-mode .top { border-bottom-color: var(--line-2); }
 .cv-bar button { flex: none; height: 51px; min-width: 51px; padding: 0 12px; display: grid; place-items: center; border: 0; border-radius: 13px; background: none; color: var(--muted); cursor: pointer; font: inherit; font-size: 16px; font-weight: 500; }
 .cv-bar::-webkit-scrollbar { display: none; }
 .cv-bar button:hover { color: var(--text); background: var(--surface-2); }
+#cv-bg .gb-wheel { width: 20px; height: 20px; } #cv-bg .gb-wheel::after { inset: 5px; } /* the backdrop colour, as beside Labels in the library */
+#cv-bg[aria-expanded="true"] { background: var(--surface-3); }
 .cv-bar button[aria-pressed="true"] { color: var(--text); background: var(--surface-3); }
 .cv-bar svg { width: 27px; height: 27px; }
 .cv-bar .sep { align-self: stretch; margin: 6px 4px; }
@@ -2911,6 +2913,7 @@ body { letter-spacing: -.005em; }
     <span id="cv-swatches" style="display:contents"></span>
     <label class="cv-thick" id="cv-thick" title="Marker thickness ( [ and ] )" hidden><span class="thick-dot"><i></i></span><input type="range" id="cv-width" min="1" max="40" step="1" value="4" aria-label="Marker thickness"><output id="cv-width-out">4 px</output></label>
     <span class="sep"></span>
+    <button type="button" id="cv-bg" title="Background colour" aria-label="Background colour" aria-haspopup="dialog" aria-expanded="false"><i class="gb-wheel"></i></button>
     <button type="button" id="cv-undo" title="Undo (⌘Z)" aria-label="Undo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7.8 7H14a6 6 0 0 1 0 12H8v-2h6a4 4 0 0 0 0-8H7.8l2.6 2.6L9 13 4 8l5-5 1.4 1.4z"/></svg></button>
     <button type="button" id="cv-redo" title="Redo (⌘⇧Z)" aria-label="Redo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16.2 7H10a6 6 0 0 0 0 12h6v-2h-6a4 4 0 0 1 0-8h6.2l-2.6 2.6L15 13l5-5-5-5-1.4 1.4z"/></svg></button>
     <span class="sep"></span>
@@ -10834,16 +10837,19 @@ vp.addEventListener('pointerup', e => {
 })
 vp.addEventListener('pointercancel', endPointer)
 vp.addEventListener('dblclick', e => {
-  if (e.target.closest('[data-cvui]:not([data-openboard])')) return
-  const arrow = e.target.closest('.cv-links [data-id]')
+  // the press before it captured the pointer, so the double-click arrives addressed to the canvas itself: what was
+  // double-clicked is whatever lies under the pointer (otherwise texts couldn't be edited again, 27 Oct)
+  const under = (e.target === vp && document.elementFromPoint(e.clientX, e.clientY)) || e.target
+  if (under.closest('[data-cvui]:not([data-openboard])')) return
+  const arrow = under.closest('.cv-links [data-id]')
   if (arrow) { if (S.canWrite) editArrowLabel(arrow.dataset.id); return }
-  const hit = e.target.closest('.cv-item')
+  const hit = under.closest('.cv-item')
   const it = hit && CV.items.get(hit.dataset.id)
   if (!it) { if (S.canWrite && (CV.tool === 'select' || CV.tool === 'connect')) openQuick(e.clientX, e.clientY); return }
   const id = hit.dataset.id
   if (it.type === 'text') startEdit(id)
-  else if (it.type === 'column') { if (e.target.closest('.cv-col-h')) startEdit(id) }
-  else if (it.type === 'board') { if (e.target.closest('.cv-t')) startEdit(id); else if (it.canvasId) openBoard(it.canvasId) }
+  else if (it.type === 'column') { if (under.closest('.cv-col-h')) startEdit(id) }
+  else if (it.type === 'board') { if (under.closest('.cv-t')) startEdit(id); else if (it.canvasId) openBoard(it.canvasId) }
   else if (it.type === 'ref' && byId(it.refId)) openDetail(it.refId)
 })
 vp.addEventListener('wheel', e => {
@@ -13293,16 +13299,19 @@ function syncBgPop() {
   if (document.activeElement !== $('#bg-hex')) $('#bg-hex').value = S.bg ? S.bg.toUpperCase() : ''
 }
 function toggleBgPop(force) {
-  const pop = $('#bgpop'), btn = [$('#gb-bg'), $('#settings-btn')].find(b => b.offsetParent) || $('#settings-btn') // the button beside Labels, else Settings'
+  const pop = $('#bgpop'), btn = [$('#cv-bg'), $('#gb-bg'), $('#settings-btn')].find(b => b.offsetParent) || $('#settings-btn') // the canvas toolbar's (projects, boards), the one beside Labels, else Settings'
   const open = force ?? pop.hidden
   pop.hidden = !open
   btn.setAttribute('aria-expanded', String(open))
   if (!open) return
   syncBgPop()
   const a = btn.getBoundingClientRect(), m = pop.getBoundingClientRect()
-  placeAt(pop, Math.max(8, Math.min(innerWidth - m.width - 8, a.right - m.width)), a.bottom + 8)
+  // above a button low on the screen (the canvas toolbar sits at the bottom), below anything else
+  const low = a.bottom + 8 + m.height > innerHeight - 8
+  placeAt(pop, Math.max(8, Math.min(innerWidth - m.width - 8, low ? a.left + a.width / 2 - m.width / 2 : a.right - m.width)), low ? Math.max(8, a.top - m.height - 8) : a.bottom + 8)
 }
 $('#bg-btn').onclick = e => { e.stopPropagation(); toggleBgPop() }
+$('#cv-bg').onclick = e => { e.stopPropagation(); toggleBgPop() }
 $('#bg-swatches').addEventListener('click', e => {
   const rm = e.target.closest('[data-bgrm]'); if (rm) { forgetBgColour(rm.dataset.bgrm); return }
   if (e.target.closest('[data-bgsave]')) { saveBgColour(); return }
@@ -13356,7 +13365,7 @@ $('#bg-hex').addEventListener('input', e => {
   if (HEX.test(v)) applyBg(v)
 })
 $('#bg-hex').addEventListener('change', () => rememberBg(S.bg))
-document.addEventListener('mousedown', e => { if (!$('#bgpop').hidden && !e.target.closest('#bgpop, #bg-btn, #gb-bg')) toggleBgPop(false) })
+document.addEventListener('mousedown', e => { if (!$('#bgpop').hidden && !e.target.closest('#bgpop, #bg-btn, #gb-bg, #cv-bg')) toggleBgPop(false) })
 function cycleBg() {
   const i = BG_PRESETS.findIndex(([hex]) => hex === (S.bg || null))
   const [hex, name] = BG_PRESETS[(i + 1) % BG_PRESETS.length]
@@ -13878,7 +13887,7 @@ document.addEventListener('keydown', e => {
   if (canvasKey(e)) return
   const typing = e.target && e.target.closest ? e.target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])') : null
   if (e.key === 'Escape' && menuFor) { e.preventDefault(); closeMenu(); return }
-  if (e.key === 'Escape' && !$('#bgpop').hidden) { e.preventDefault(); toggleBgPop(false); ([$('#gb-bg'), $('#settings-btn')].find(b => b.offsetParent) || $('#settings-btn')).focus(); return }
+  if (e.key === 'Escape' && !$('#bgpop').hidden) { e.preventDefault(); toggleBgPop(false); ([$('#cv-bg'), $('#gb-bg'), $('#settings-btn')].find(b => b.offsetParent) || $('#settings-btn')).focus(); return }
   if (e.key === 'Escape' && !$('#tagmenu').hidden) { e.preventDefault(); $('#tagmenu').hidden = true; document.querySelectorAll('[data-menu][aria-expanded="true"]').forEach(b => b.setAttribute('aria-expanded', 'false')); return } // Type / Order / Export menus
   if (e.key === 'Escape' && !$('#projmenu').hidden) { e.preventDefault(); closeProjMenu(); return }
   if (e.key === 'Escape' && !$('#th-menu').hidden) { e.preventDefault(); $('#th-menu').hidden = true; return }
