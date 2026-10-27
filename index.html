@@ -412,6 +412,27 @@
     },
   }
 
+  // Settings → Start fresh: everything in this library goes (references, notes, canvases, projects, settings, pictures and
+  // videos, and this browser's copies of them); the account stays, so you're still signed in and land on a new library
+  W.startFresh = async (progress = () => {}) => {
+    await ready
+    pending.clear(); clearTimeout(flushTimer) // nothing still waiting to be written comes back afterwards
+    await flushing.catch(() => {})
+    progress('Deleting your library…')
+    const { error } = await sb.from('docs').delete().eq('owner', uid)
+    if (error) throw error
+    const files = (await assets.list()).assets.map(a => a.id)
+    for (let i = 0; i < files.length; i += 100) {
+      progress(`Deleting pictures and videos… ${Math.min(i + 100, files.length)} of ${files.length}`)
+      const { error: e } = await sb.storage.from('media').remove(files.slice(i, i + 100))
+      if (e) throw e
+    }
+    for (const col of Object.keys(store)) delete store[col]
+    await Promise.all(['dailies-media-v1', 'dailies-share'].map(c => caches.delete(c).catch(() => false)))
+    try { for (const k of Object.keys(localStorage)) if (/^dailies[.:]/.test(k) && k !== 'dailies:theme') localStorage.removeItem(k) } catch { /* no storage */ }
+    return { files: files.length }
+  }
+
   // the Refresh button: write what's pending, then read the library again (realtime normally keeps it current)
   W.reload = async () => {
     await ready; await W.flush()
@@ -8023,9 +8044,23 @@ function webSettings(body, sec, noun) {
   body.insertAdjacentHTML('beforeend', sec('data', glyph('note'), 'Your data', '', noun(S.refs.length, 'reference'), `
       <p class="sline">Bring in a library you already have: a Dailies file from claude.ai (<b>Settings → Your data → Move to the Mac app</b>) or from Dailies for Mac. Everything in it is added; nothing here is removed.</p>
       <div class="ss-actions"><label class="btn primary">Import a Dailies file<input type="file" id="web-import" accept=".zip,application/zip" hidden></label><button class="btn" id="set-export" type="button">Export JSON</button></div>
-      <p class="sline" id="web-import-note"></p>`))
+      <p class="sline" id="web-import-note"></p>
+      <p class="sline"><b>Start fresh</b>: delete everything in your library (references, notes, canvases, projects, settings, pictures and videos) and begin again. You stay signed in. It can’t be undone, so use <b>Export JSON</b> first if you want a copy.</p>
+      <div class="ss-actions"><button class="btn danger" id="web-fresh" type="button">Start fresh</button></div>`))
   const out = $('#web-signout')
   if (out) out.onclick = () => W.signOut()
+  const fresh = $('#web-fresh')
+  if (fresh) fresh.onclick = async () => {
+    const ok = await askConfirm({ title: 'Start fresh?', body: `This deletes ${plural(S.refs.length, 'reference')}, your notes, canvases, projects, settings, pictures and videos. You stay signed in. It can’t be undone.`, yes: 'Delete everything' })
+    if (!ok) return
+    const note = $('#web-import-note'), say = m => { if (note) note.textContent = m }
+    fresh.disabled = true
+    try {
+      window.postMessage({ type: 'dailies:reset' }, '*') // the Chrome extension forgets what it already sent, followed and queued
+      await W.startFresh(say)
+      location.reload() // a new library's first screen
+    } catch (e) { say('Couldn’t finish: ' + (e.message || e) + '. Try Start fresh again.'); fresh.disabled = false }
+  }
   const imp = $('#web-import')
   if (imp) imp.onchange = async () => {
     const f = imp.files && imp.files[0]; if (!f) return
