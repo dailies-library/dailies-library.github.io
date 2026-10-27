@@ -5572,8 +5572,8 @@ function render() {
   let navHtml = `<button class="tab" data-source="all" aria-pressed="${S.source === 'all' && plain}">All <span class="n">${total}</span></button>` + newTab +
     // each app is just its logo; picking Pinterest (or Instagram) shows its boards as picture cards above the references
     order.map(k => `<button class="tab icontab" data-source="${esc(k)}" aria-pressed="${S.source === k && !S.via}" aria-label="${esc(info(k).label)}, ${counts[k] || 0}" title="${esc(info(k).label)} · ${counts[k] || 0}">${tabGlyph(k)}<span class="nm">${esc(info(k).label)}</span></button>`).join('') +
-    // Stills sit with the platforms: an icon like theirs
-    (stillCount || S.via === 'stills' ? `<button class="tab icontab stilltab" data-via="stills" aria-pressed="${S.via === 'stills'}" aria-label="Stills and videos, ${stillCount}" title="Stills & Videos · ${stillCount}">${STILL_IC}<span class="nm">Stills &amp; Videos</span></button>` : '') +
+    // Stills sit with the platforms: an icon like theirs, always there like them (Rohit, 27 Oct)
+    `<button class="tab icontab stilltab" data-via="stills" aria-pressed="${S.via === 'stills'}" aria-label="Stills and videos, ${stillCount}" title="Stills & Videos · ${stillCount}">${STILL_IC}<span class="nm">Stills &amp; Videos</span></button>` +
     '<span class="div intabs"></span>' + (tailHtml + shuffleHtml).replace(/class="tab icontab/g, 'class="tab icontab intabs')
 
   const types = {}, tags = {}, fmts = {}
@@ -5629,10 +5629,12 @@ function render() {
   const onlyPlatform = PLATFORM_TABS.includes(S.source) && !S.board && !S.via && !S.q && !S.tag && !S.kind && !S.type && !S.color && !S.newOnly && !S.similar && !S.smart
   const working0 = IMP.run && !IMP.run.finished
   const plainView = !S.board && !S.q && !S.tag && !S.kind && !S.type && !S.color && !S.newOnly && !S.similar && !S.smart
-  if (plainView && !S.filtered.length && ((S.source === 'twitter' && !S.via) || S.via === 'slack')) { // the always-there X and Slack, still empty
+  if (plainView && !S.filtered.length && ((S.source === 'twitter' && !S.via) || S.via === 'slack' || S.via === 'stills')) { // the always-there X, Slack and Stills, still empty
     empty.hidden = false
     empty.classList.remove('working')
-    empty.innerHTML = S.via === 'slack'
+    empty.innerHTML = S.via === 'stills'
+      ? '<h2>No stills or videos yet</h2><p>Film stills and stock pictures land here: save one from ShotDeck, FILMGRAB, Flim, Unsplash or Pexels, drop in a picture or a video file, or paste one with <b>Save</b>.</p>'
+      : S.via === 'slack'
       ? (window.DAILIES_WEB ? '<h2>Nothing from Slack yet</h2><p>Soon you’ll share links and pictures to Dailies in Slack, from your phone or your computer, and they’ll land here.</p>'
         : `<h2>Nothing from Slack yet</h2><p>Share a link to <b>#${esc(S.settings?.channelName || 'your references channel')}</b> in Slack and it lands here.</p>`)
       : '<h2>No X references yet</h2><p>Press the <b>Save</b> button on a post on x.com (with the Chrome extension), or paste a post’s link into <b>Save</b>.</p>'
