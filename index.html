@@ -5871,7 +5871,7 @@ function openFilterMenu(anchor) {
   if (which === 'export') {
     menu.dataset.scope = anchor.dataset.scope || ''
     const what = anchor.dataset.scope === 'sel' ? `${S.sel.size} selected` : boardTitle()
-    menu.innerHTML = `<div class="mhead" style="border:0;margin:0">Moodboard of ${esc(what)}</div><button type="button" data-val="png"><span>PNG image</span></button><button type="button" data-val="pdf"><span>PDF</span></button><button type="button" data-val="brief"><span>Brief (text for a client or an AI tool)</span></button>`
+    menu.innerHTML = `<div class="mhead" style="border:0;margin:0">Export ${esc(what)}</div>${anchor.dataset.scope === 'sel' ? '<button type="button" data-val="zip"><span>Pictures as a ZIP (one file each)</span></button>' : ''}<button type="button" data-val="png"><span>Moodboard as a PNG</span></button><button type="button" data-val="pdf"><span>Moodboard as a PDF</span></button><button type="button" data-val="brief"><span>Brief (text for a client or an AI tool)</span></button>`
     menu.hidden = false
     const a = anchor.getBoundingClientRect(), m = menu.getBoundingClientRect()
     placeAt(menu, Math.max(8, Math.min(innerWidth - m.width - 8, a.right - m.width)), a.bottom + 6 + m.height > innerHeight ? a.top - m.height - 6 : a.bottom + 6)
@@ -5896,7 +5896,7 @@ $('#tagmenu').addEventListener('click', e => {
   const b = e.target.closest('[data-val]'); if (!b) return
   const which = $('#tagmenu').dataset.which, val = b.dataset.val || null
   if (which === 'sort') { $('#tagmenu').hidden = true; setSort(val); return }
-  if (which === 'export') { $('#tagmenu').hidden = true; const only = $('#tagmenu').dataset.scope === 'sel' ? selRefs() : null; if (val === 'brief') exportBrief(only); else exportBoard(val, only); return }
+  if (which === 'export') { $('#tagmenu').hidden = true; const only = $('#tagmenu').dataset.scope === 'sel' ? selRefs() : null; if (val === 'zip') downloadZip(only || []); else if (val === 'brief') exportBrief(only); else exportBoard(val, only); return }
   if (which === 'kind') { S.type = val && val.startsWith('y:') ? val.slice(2) : null; S.fmt = val && val.startsWith('f:') ? val.slice(2) : null; S.kind = val && !/^[yf]:/.test(val) ? val : null }
   else S[which] = val
   $('#tagmenu').hidden = true
@@ -6199,38 +6199,12 @@ async function addToCanvas(ids) {
   placeGrid(ids)
 }
 
-// drag a box over the wall to pick everything it touches (start on the empty space between cards)
-let mq = null
-$('main').addEventListener('pointerdown', e => {
-  if (e.button !== 0 || e.pointerType === 'touch' || canvasOn() || notesOn()) return
-  if (e.target.closest('.card, .shelf, .taghead, button, a, input, [contenteditable], .empty')) return
-  mq = { x: e.clientX, y: e.clientY, sy: scrollY, base: e.shiftKey || e.metaKey ? new Set(S.sel) : new Set(), on: false }
-})
-addEventListener('pointermove', e => {
-  if (!mq) return
-  const dx = e.clientX - mq.x, dy = e.clientY + scrollY - mq.sy - mq.y
-  if (!mq.on && Math.hypot(dx, dy) < 6) return
-  if (!mq.on) { mq.on = true; document.body.classList.add('marqueeing'); $('#marquee').hidden = false }
-  mq.cx = e.clientX; mq.cy = e.clientY
-  drawMarquee()
-  if (e.clientY > innerHeight - 40) scrollBy(0, 18); else if (e.clientY < 120) scrollBy(0, -18)
-})
-function drawMarquee() {
-  const top = mq.y - (scrollY - mq.sy), x1 = Math.min(mq.x, mq.cx), x2 = Math.max(mq.x, mq.cx), y1 = Math.min(top, mq.cy), y2 = Math.max(top, mq.cy)
-  Object.assign($('#marquee').style, { left: x1 + 'px', top: y1 + 'px', width: x2 - x1 + 'px', height: y2 - y1 + 'px' })
-  S.sel = new Set(mq.base)
-  for (const el of document.querySelectorAll('#grid .card')) {
-    const b = el.getBoundingClientRect()
-    if (b.right > x1 && b.left < x2 && b.bottom > y1 && b.top < y2) S.sel.add(el.dataset.id)
-  }
-  syncSel()
-}
-addEventListener('scroll', () => { if (mq && mq.on) drawMarquee() }, { passive: true })
-addEventListener('pointerup', () => {
-  if (!mq) return
-  if (mq.on) { $('#marquee').hidden = true; document.body.classList.remove('marqueeing'); getSelection()?.removeAllRanges() }
-  else if (S.sel.size && !mq.base.size) clearSel() // a plain click on empty space lets go of the picks
-  mq = null
+// picking is with each card's circle (or a long press on a phone); dragging a box over the wall is gone (Rohit, 27 Oct: not
+// needed). A click on the empty space between cards still lets go of the picks
+$('main').addEventListener('click', e => {
+  if (!S.sel.size || canvasOn() || notesOn()) return
+  if (e.target.closest('.card, .shelf, .taghead, button, a, input, [contenteditable], .empty, .selbar, .seltag')) return
+  clearSel()
 })
 
 // drag cards onto a hashtag (the "Your hashtags" row, or the dock that appears while dragging)
@@ -12547,14 +12521,39 @@ $('#d-pal-dl').onclick = async () => {
 const slug = t => String(t || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 48)
 // a reference's file: its video, GIF or full picture
 const refMedia = r => r.video ? { id: r.video, kind: 'video', pic: r.image ? imgSrc(r.image) : null, name: headOf(r) } : r.gif ? { id: r.gif, kind: 'gif', pic: r.image ? imgSrc(r.image) : null, name: headOf(r) } : r.image ? { id: r.image, kind: 'image', pic: imgSrc(r.image), name: headOf(r) } : null
+const MEDIA_EXT = { 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif', 'image/jpeg': 'jpg', 'video/mp4': 'mp4', 'video/webm': 'webm', 'video/quicktime': 'mov' }
+const mediaExt = (type, kind) => MEDIA_EXT[type] || (kind === 'video' ? 'mp4' : kind === 'gif' ? 'gif' : 'jpg')
 async function downloadMedia(m) {
   if (!m || !S.downloads) return
   toast('Preparing the download…')
   try {
     const blob = await (await fetch(imgSrc(m.id))).blob()
-    const ext = { 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif', 'image/jpeg': 'jpg', 'video/mp4': 'mp4', 'video/webm': 'webm', 'video/quicktime': 'mov' }[blob.type] || (m.kind === 'video' ? 'mp4' : m.kind === 'gif' ? 'gif' : 'jpg')
+    const ext = mediaExt(blob.type, m.kind)
     await saveFile(`${slug(m.name) || 'dailies'}.${ext}`, blob)
   } catch (e) { toast('Couldn’t get the file: ' + (e.message || e)) }
+}
+// several references at once as one ZIP: each one's own file (its picture, or the video or GIF Dailies keeps), named after it
+// (Rohit, 27 Oct: twenty pictures squeezed into one image make no sense; a ZIP of them does)
+async function downloadZip(refs) {
+  if (!S.downloads) return
+  const list = refs.map(refMedia).filter(Boolean)
+  if (!list.length) { toast('None of these has a picture to download'); return }
+  const files = [], used = new Set()
+  let i = 0
+  for (const m of list) {
+    if (++i === 1 || i % 10 === 0) toast(`Packing ${i} of ${list.length}…`)
+    try {
+      const blob = await (await fetch(imgSrc(m.id))).blob()
+      const ext = mediaExt(blob.type, m.kind), base = slug(m.name) || 'reference'
+      let name = `${base}.${ext}`
+      for (let n = 2; used.has(name); n++) name = `${base}-${n}.${ext}`
+      used.add(name)
+      files.push([name, new Uint8Array(await blob.arrayBuffer())])
+    } catch { /* that one is skipped */ }
+  }
+  if (!files.length) { toast('Couldn’t get the files'); return }
+  await saveFile(`dailies-${files.length}-references-${new Date().toISOString().slice(0, 10)}.zip`, makeZip(files))
+  toast(`${plural(files.length, 'file')} in the ZIP${files.length < list.length ? ` · ${list.length - files.length} couldn’t be fetched` : ''}`)
 }
 // a picture onto the clipboard, ready to paste into Slack, Figma, Docs… Browsers only take PNG, so other pictures are redrawn
 // as PNG first. The clipboard is asked straight away (with the picture still on its way), so the click still counts as yours
