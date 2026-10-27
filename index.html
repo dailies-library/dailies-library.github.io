@@ -7382,7 +7382,7 @@ function openInbox() {
   document.documentElement.dataset.dailiesInbox = 'ready'
   S.vocabSig = null
   setTimeout(syncVocab, 500)
-  sendBoards()
+  sendBoards(false, true) // Dailies was just opened or reloaded: the one time Instagram is looked at by itself
   requestPreviews()
 }
 
@@ -7541,11 +7541,12 @@ async function applyPreview(res) {
   if (!p.image && !p.title && !p.media && !p.scrub && !p.sl && !p.pk && !('vidWant' in p)) return // nothing found; leave it for "refresh Dailies previews"
   await patch(r.id, p)
 }
-function sendBoards(force) {
+function sendBoards(force, visit) {
   if (!S.inboxOpen) return
   window.postMessage({ type: 'dailies:boards', boards: (S.settings && S.settings.pinterest) || [], force: force === true }, '*') // Refresh (force) reads your boards now
-  // the extension looks at the collections itself at most every 10 minutes; Refresh (force) asks it to look now
-  window.postMessage({ type: 'dailies:igcols', cols: (S.settings && S.settings.instagram) || [], force: force === true }, '*')
+  // Instagram is only looked at when you open or reload Dailies (visit) or press Refresh (force), at most every 10 minutes;
+  // the rest of the time the extension just keeps the list (Rohit, 27 Oct)
+  window.postMessage({ type: 'dailies:igcols', cols: (S.settings && S.settings.instagram) || [], force: force === true, visit: visit === true }, '*')
 }
 setInterval(sendBoards, 10 * 60e3) // while Dailies stays open, keep looking for new pins and saves
 async function followIgCollections(cols) {
@@ -7912,7 +7913,7 @@ function renderSettings() {
       ${bad(pinSt) ? `<p class="sline bad">${esc(bad(pinSt))}</p>` : ''}
       ${S.canWrite ? `<div class="addrow"><input class="field" id="board-url" placeholder="Your username or a board link" autocomplete="off" spellcheck="false"><button class="btn" id="board-add" type="button">Add</button></div><p class="sline bad" id="board-error" hidden></p>` : ''}`) +
     sec('ig', glyph('instagram', true), 'Instagram', igDot, !igCols.length ? 'None followed' : igDot === 'warn' ? 'Not imported yet' : noun(igCols.length, 'collection'), `
-      <p class="sline">On instagram.com open a Saved collection, click the Dailies extension and press <b>Import</b>. After that, while Dailies is open in Chrome, the extension looks at two of your collections at a time for new saves, at a random moment 40 to 80 minutes apart (never on a schedule Instagram could spot), in a background tab that closes itself. Refresh can ask sooner, at most every 10 minutes.${S.igNext && S.igNext > Date.now() ? ` <b>Next look: around ${new Date(S.igNext).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</b> (in ${Math.max(1, Math.round((S.igNext - Date.now()) / 60e3))} min).` : ''}</p>
+      <p class="sline">On instagram.com open a Saved collection, click the Dailies extension and press <b>Import</b>. After that, each time you open or reload Dailies (or press Refresh), the extension looks at two of your collections for new saves, taking turns, in a background tab that closes itself. Never more than once every 10 minutes, and never while Dailies is just sitting open.</p>
       ${igCols.length ? `<div class="boards">${igCols.map((c, i) => { const st = igSt[i]; return row(c.label + (st && st.ok ? ' · ' + (st.total || 0) + ' saves' : ''), st, 'data-unig', i, 'Stop following ' + esc(c.label)) }).join('')}</div>` : ''}
       ${bad(igSt) ? `<p class="sline bad">${esc(bad(igSt))}</p>` : ''}
       ${S.canWrite ? `<div class="addrow"><input class="field" id="ig-url" placeholder="Paste a collection link" autocomplete="off" spellcheck="false"><button class="btn" id="ig-add" type="button">Add</button></div><p class="sline bad" id="ig-error" hidden></p>` : ''}`) +
