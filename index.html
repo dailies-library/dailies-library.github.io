@@ -1,4 +1,4 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="robots" content="noindex"><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script><script>// Dailies on the web: stands in for what claude.ai gives the page (window.claude.use(...)), using Supabase
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="robots" content="noindex"><meta http-equiv="Content-Security-Policy" content="object-src 'none'; base-uri 'self'; form-action 'self'"><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js" integrity="sha384-0w2KAL2YHP6wKOkUDzkCDGgVvfmHnj02DHeQ6XcHOgTfFsGyonKOpShMH1x6nk9o" crossorigin="anonymous"></script><script>// Dailies on the web: stands in for what claude.ai gives the page (window.claude.use(...)), using Supabase
 // for sign-in, each person's private library (table `docs`) and their pictures and videos (bucket `media`).
 // Loaded after supabase-js and before the page's own script.
 (() => {
@@ -23,12 +23,24 @@
   // pictures and videos are served from this site's /_blob/ address by sw.js, so canvases and exports can read them
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(e => console.warn('no service worker', e))
 
+  // pictures and videos are private: sw.js fetches them with the signed-in person's token, which it gets from here
+  // (on sign-in and every refresh, and again when it asks after being restarted); signing out clears it
+  const tellWorker = session => {
+    if (!('serviceWorker' in navigator)) return
+    const m = { type: 'dailies:token', token: session ? session.access_token : null }
+    if (navigator.serviceWorker.controller) navigator.serviceWorker.controller.postMessage(m)
+    navigator.serviceWorker.ready.then(r => r.active && r.active !== navigator.serviceWorker.controller && r.active.postMessage(m)).catch(() => {})
+  }
+  if ('serviceWorker' in navigator) navigator.serviceWorker.addEventListener('message', e => {
+    if (e.data && e.data.type === 'dailies:token?') sb.auth.getSession().then(({ data }) => tellWorker(data.session))
+  })
+
   // ---------------------------------------------------------------- sign in
   let uid = null
   const signedIn = new Promise(resolve => {
     const done = session => { uid = session.user.id; W.email = session.user.email || ''; hideGate(); setTimeout(resolve, 0) } // the library loads outside the auth callback
-    sb.auth.getSession().then(({ data }) => { if (data.session) done(data.session); else showGate() })
-    sb.auth.onAuthStateChange((event, session) => { if (session && !uid) done(session); if (event === 'SIGNED_OUT') location.reload() })
+    sb.auth.getSession().then(({ data }) => { tellWorker(data.session); if (data.session) done(data.session); else showGate() })
+    sb.auth.onAuthStateChange((event, session) => { tellWorker(session); if (session && !uid) done(session); if (event === 'SIGNED_OUT') location.reload() })
   })
   W.signOut = () => sb.auth.signOut()
   // the link-preview server function (supabase/functions/preview): the page sends the signed-in user's token with it
@@ -340,8 +352,12 @@
   // ---------------------------------------------------------------- pictures and videos
   const EXT = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif', 'image/svg+xml': 'svg', 'video/mp4': 'mp4', 'video/webm': 'webm', 'video/quicktime': 'mov', 'application/pdf': 'pdf' }
   const randHex = () => [...crypto.getRandomValues(new Uint8Array(16))].map(b => b.toString(16).padStart(2, '0')).join('')
+  // stored files keep their type only if it's a picture, video, sound or PDF; anything else (an HTML page, a script) is kept
+  // as plain bytes, so no browser ever opens it as a page
+  const safeType = t => /^(image|video|audio)\/[\w.+-]+$/.test(t) || t === 'application/pdf' ? t : 'application/octet-stream'
   async function put(blob, type) {
     if (blob.size > 50 * 1048576) throw err('too_large', 'That file is over 50 MB.')
+    type = safeType(String(type || ''))
     const id = `${uid}/${randHex()}.${EXT[type] || 'bin'}`
     const { error } = await sb.storage.from('media').upload(id, blob, { contentType: type, cacheControl: '31536000', upsert: false })
     if (error) throw err(/quota|exceed/i.test(error.message) ? 'quota_or_state' : 'upload_failed', 'Couldn’t store the file: ' + error.message)
@@ -560,7 +576,7 @@ kbd.k { font: 500 11px var(--mono); min-width: 20px; height: 20px; padding: 0 5p
 .tool:hover, .tool[aria-expanded="true"] { background: var(--surface-3); color: var(--text); }
 .tool[aria-pressed="true"], .tool[aria-pressed="true"]:hover { background: var(--text); color: var(--bg); } /* shuffled */
 body.canvas-mode #shuffle-btn, body.canvas-mode #export-btn, body.canvas-mode #refresh-btn { display: none; }
-#refresh-btn { order: -1; } /* the two icon buttons (Shuffle, Refresh) sit together before Save and Import */
+.row2 #refresh-btn { flex: none; margin-right: -12px; } /* on the filter row, close beside All types (placeTypeSlot moves it there) */
 #export-btn, #bg-btn, #shuffle-btn { display: none !important; } /* the moodboard is in Settings, the background beside Labels, Shuffle in the tab row */
 @media (min-width: 761px) and (max-width: 1699px) { #shuffle-btn { display: grid !important; order: -2; } .tab.intabs[data-shuffle] { display: none; } } /* there is no room for it at the end of the tab row: it sits beside the search bar instead (the search bar is long enough to give it up) */
 .tool svg { width: 17px; height: 17px; transition: transform .3s ease; }
@@ -4284,6 +4300,9 @@ const FROM_CHROME = location.hash === '#from-chrome'
 
 // ------------------------------------------------------------------ helpers
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
+// a picture address that can go inside style="background-image:url('…')": https, a data: picture or a blob:, with nothing that
+// could close the quotes or the url(); anything else gives '' (no picture)
+const cssUrl = u => /^(https:\/\/|data:image\/|blob:)[^'"()\s\\<>]*$/.test(String(u || '')) ? String(u) : ''
 const info = k => SOURCES[k] || SOURCES.web
 // the tab row has only these apps; a link from any other website (Dribbble, Savee, Are.na, TikTok…) is filed under Web
 const TAB_APPS = ['pinterest', 'instagram', 'twitter', 'youtube', 'note', 'upload']
@@ -4599,7 +4618,7 @@ function renderYtRes() {
   const have = l.videos.filter(v => S.refs.some(r => r.key === dedupeKey('https://www.youtube.com/watch?v=' + v.id))).length
   const fresh = l.videos.length - have
   const hidden = l.total - l.videos.length
-  const pics = [0, 1, 2].map(k => `<i${l.covers[k] ? ` style="background-image:url('${l.covers[k]}')"` : ''}></i>`).join('')
+  const pics = [0, 1, 2].map(k => `<i${cssUrl(l.covers[k]) ? ` style="background-image:url('${cssUrl(l.covers[k])}')"` : ''}></i>`).join('')
   box.innerHTML = `<div class="imp-bar"><b>Playlist</b></div>
     <div class="imp-row" style="grid-template-columns: 150px 1fr; gap: 16px; align-items: center"><div class="imp-cover" style="border-radius: 12px">${pics}</div><div><b style="font-size: 16px">${esc(l.title)}</b><div class="imp-note" style="margin: 4px 0 0">${esc(l.owner)}${l.owner ? ' · ' : ''}${plural(l.videos.length, 'video')}${have ? ` · ${have} already in your library` : ''}</div>${hidden > 0 ? `<div class="imp-note" style="margin: 4px 0 0">${plural(hidden, 'video')} are private or removed, so YouTube doesn’t list them.</div>` : ''}</div></div>
     <div class="imp-foot"><span>${fresh ? `Saved with the hashtag #${esc(ytTag(l))}` : 'Everything here is already in your library'}</span><button class="btn primary" type="button" data-imp-yt${fresh ? '' : ' disabled'}>${fresh ? `Import ${plural(fresh, 'video')}` : 'Import'}</button></div>`
@@ -4662,7 +4681,7 @@ function renderYtProgress() {
   box.querySelector('h2').textContent = run.stopped ? 'Import stopped' : run.finished ? 'Your playlist is in' : 'Bringing in your playlist'
   box.querySelector('.imp-lead').textContent = run.finished ? `${plural(run.done, 'video')} added${run.had ? `, ${run.had} were already here` : ''}${run.failed ? `, ${run.failed} couldn’t be saved` : ''}.` : 'Videos are being saved to your library.'
   const pics = run.list.covers[0]
-  box.querySelector('.imp-rows').innerHTML = `<div class="imp-row${run.finished ? ' done' : ''}"><span class="mini"${pics ? ` style="background-image:url('${pics}')"` : ''}></span><div><b>${esc(run.list.title)}</b><div class="meter"><i style="--p:${run.finished ? 100 : Math.max(3, pct)}%"></i></div></div><span class="n">${run.finished ? plural(run.done + run.had, 'video') : `${n} of ${run.total}`}</span></div>`
+  box.querySelector('.imp-rows').innerHTML = `<div class="imp-row${run.finished ? ' done' : ''}"><span class="mini"${cssUrl(pics) ? ` style="background-image:url('${cssUrl(pics)}')"` : ''}></span><div><b>${esc(run.list.title)}</b><div class="meter"><i style="--p:${run.finished ? 100 : Math.max(3, pct)}%"></i></div></div><span class="n">${run.finished ? plural(run.done + run.had, 'video') : `${n} of ${run.total}`}</span></div>`
   box.querySelector('.imp-foot span').textContent = run.finished ? '' : plural(run.done, 'video') + ' saved so far'
 }
 
@@ -4689,7 +4708,7 @@ function renderIgRes() {
   box.innerHTML = `${igPauseNote()}<div class="imp-bar"><b>${esc(ig.user)} · ${plural(ig.cols.length, 'collection')}</b><span>All posts already includes the rest</span></div>
     <div class="imp-boards">${ig.cols.map((c, i) => {
       const on = IMP.igSel.has(c.url)
-      const pics = [0, 1, 2].map(k => `<i${c.pics[k] ? ` style="background-image:url('${c.pics[k]}')"` : ''}></i>`).join('')
+      const pics = [0, 1, 2].map(k => `<i${cssUrl(c.pics[k]) ? ` style="background-image:url('${cssUrl(c.pics[k])}')"` : ''}></i>`).join('')
       return `<button class="imp-board" type="button" data-imp-igcol="${esc(c.url)}" aria-pressed="${on}" style="--i:${i}"><div class="imp-cover">${pics}</div><span class="ck">${CHECK_IC}</span><b>${esc(c.name)}</b><small>${c.id ? 'Collection' : 'Everything you saved'}</small></button>`
     }).join('')}</div>
     <div class="imp-foot"><span>${chosen.length ? 'Instagram opens in a tab for a few minutes. Leave it there until it finishes.' : 'Pick what to bring in'}</span><button class="btn primary" type="button" data-imp-iggo${chosen.length && !(S.igPause > Date.now()) ? '' : ' disabled'}>${chosen.length ? `Import ${plural(chosen.length, 'collection')}` : 'Import'}</button></div>`
@@ -4762,7 +4781,7 @@ function renderIgProgress() {
   box.querySelector('.imp-pausewrap').innerHTML = igPauseNote()
   box.querySelector('.imp-rows').innerHTML = run.cols.map(c => {
     const done = c.done || !!c.error
-    return `<div class="imp-row${c.done && !c.error ? ' done' : ''}"><span class="mini"${c.pics && c.pics[0] ? ` style="background-image:url('${c.pics[0]}')"` : ''}></span><div><b>${esc(c.name)}</b><div class="meter${done ? '' : ' imp-meter-wait'}"><i style="--p:${done ? 100 : 40}%"></i></div></div><span class="n">${c.error ? esc(c.error) : c.done ? `${CHECK_IC.replace('<svg', '<svg width="12" height="12" style="vertical-align:-1px;margin-right:4px"')}${plural(c.total, 'save')}` : `${c.total.toLocaleString()} found`}</span></div>`
+    return `<div class="imp-row${c.done && !c.error ? ' done' : ''}"><span class="mini"${cssUrl(c.pics[0]) ? ` style="background-image:url('${cssUrl(c.pics[0])}')"` : ''}></span><div><b>${esc(c.name)}</b><div class="meter${done ? '' : ' imp-meter-wait'}"><i style="--p:${done ? 100 : 40}%"></i></div></div><span class="n">${c.error ? esc(c.error) : c.done ? `${CHECK_IC.replace('<svg', '<svg width="12" height="12" style="vertical-align:-1px;margin-right:4px"')}${plural(c.total, 'save')}` : `${c.total.toLocaleString()} found`}</span></div>`
   }).join('')
   box.querySelector('.imp-foot span').textContent = run.finished ? '' : plural(n, 'save') + ' found so far'
 }
@@ -4780,7 +4799,7 @@ function renderPinRes() {
     ${open.length && IMP.boards.length - open.length ? `<p class="sline">${plural(IMP.boards.length - open.length, 'board')} already in your library and followed; new pins on them arrive by themselves.</p>` : ''}
     <div class="imp-boards">${IMP.boards.map((b, i) => {
       const had = followedBoard(b), on = !had && IMP.sel.has(b.id)
-      const pics = [0, 1, 2].map(k => `<i${b.pics[k] ? ` style="background-image:url('${b.pics[k]}')"` : ''}></i>`).join('')
+      const pics = [0, 1, 2].map(k => `<i${cssUrl(b.pics[k]) ? ` style="background-image:url('${cssUrl(b.pics[k])}')"` : ''}></i>`).join('')
       return `<button class="imp-board${had ? ' had' : ''}" type="button" data-imp-board="${esc(b.id)}" aria-pressed="${on}" style="--i:${i}"${had ? ' disabled' : ''}><div class="imp-cover">${pics}</div><span class="ck">${CHECK_IC}</span><b>${esc(b.name)}</b><small>${had ? 'Following' : plural(b.count || 0, 'pin')}</small></button>`
     }).join('')}</div>
     <div class="imp-foot"><span>${chosen.length ? plural(pins, 'pin') : 'Pick the boards to bring in'}</span><button class="btn primary" type="button" data-imp-go${chosen.length ? '' : ' disabled'}>${chosen.length ? `Import ${plural(chosen.length, 'board')}` : 'Import'}</button></div>`
@@ -4984,7 +5003,7 @@ function renderImpProgress() {
     const total = Math.max(b.count || 0, b.got), done = doneOf(b)
     const pct = done ? 100 : total ? Math.min(98, Math.round(b.got / total * 100)) : 4
     const n = b.error ? esc(b.error) : done ? `${CHECK_IC.replace('<svg', '<svg width="12" height="12" style="vertical-align:-1px;margin-right:4px"')}${plural(b.got, 'pin')}` : `${b.got.toLocaleString()} of ${total.toLocaleString()}`
-    return `<div class="imp-row${done && !b.error ? ' done' : ''}"><span class="mini"${b.pic ? ` style="background-image:url('${b.pic}')"` : ''}></span><div><b>${esc(b.label)}</b><div class="meter${!done && !b.got && !b.error && !run.stopped && !run.finished ? ' wait' : ''}"><i style="--p:${pct}%"></i></div></div><span class="n">${n}</span></div>`
+    return `<div class="imp-row${done && !b.error ? ' done' : ''}"><span class="mini"${cssUrl(b.pic) ? ` style="background-image:url('${cssUrl(b.pic)}')"` : ''}></span><div><b>${esc(b.label)}</b><div class="meter${!done && !b.got && !b.error && !run.stopped && !run.finished ? ' wait' : ''}"><i style="--p:${pct}%"></i></div></div><span class="n">${n}</span></div>`
   }).join('')
   const partial = run.finished && run.boards.some(b => b.partial)
   const stalled = !run.finished && !run.heard && Date.now() - (run.startedAt || 0) > 25000 // the extension hasn't said a word
@@ -6815,15 +6834,16 @@ $('#d-delete').onclick = async () => {
   closeTop()
   deleteRef(r)
 }
-// On the website without the extension, references that are still waiting for a picture (saved from a phone, or before the
-// extension was installed) get their title and picture from the server function, a few at a time, in the background
+// On the website, references that are still waiting for a picture get their title and picture from the server function, a
+// few at a time, in the background: every link without the extension (saved from a phone, say), and plain websites with it
+// (the server reads them without anyone's logins; the extension keeps Instagram, Pinterest, X and YouTube)
 const WEBPREV = { asked: new Set(), busy: false, timer: 0 }
 const webPrev = () => !!(window.DAILIES_WEB && window.DAILIES_WEB_API && window.DAILIES_WEB_API.previewUrl) // the website fetches pictures itself
 function webPreviewsSoon() { if (!(window.DAILIES_WEB && S.canWrite)) return; clearTimeout(WEBPREV.timer); WEBPREV.timer = setTimeout(webPreviews, 3000) }
 async function webPreviews() {
   const W = window.DAILIES_WEB_API
-  if (WEBPREV.busy || S.ext || !(W && W.token && W.previewUrl) || document.hidden) return
-  const todo = S.refs.filter(r => r.preview === 'pending' && !r.image && /^https:\/\//i.test(r.url || '') && r.source !== 'instagram' && !WEBPREV.asked.has(r.id)).slice(0, 6)
+  if (WEBPREV.busy || !(W && W.token && W.previewUrl) || document.hidden) return
+  const todo = S.refs.filter(r => r.preview === 'pending' && !r.image && /^https:\/\//i.test(r.url || '') && r.source !== 'instagram' && !(S.ext && PREVIEWABLE.includes(r.source)) && !['note', 'upload'].includes(r.source) && !WEBPREV.asked.has(r.id)).slice(0, 6)
   if (!todo.length) return
   WEBPREV.busy = true
   try {
@@ -7126,10 +7146,14 @@ async function saveRef({ url, note = '', tags = [], image = null, extra = null, 
 
 const mqPhone = matchMedia('(max-width: 760px)')
 const isTouch = () => matchMedia('(hover: none) and (pointer: coarse)').matches
-// the Type filter sits on the second row with Sort and Help, so every filter is in one place
+// the Type filter sits on the second row with Sort and Help, so every filter is in one place; on a computer Refresh sits just
+// before it (Rohit, 27 Oct: "at the right side of the panel, just beside all types"); a phone's row has no room, so it stays on top
 function placeTypeSlot() {
   const t = $('#typeslot'); if (!t) return
   if (t.nextElementSibling !== $('#kinds')) $('.row2').insertBefore(t, $('#kinds'))
+  const r = $('#refresh-btn'), tools = $('.topactions .tools')
+  if (mqPhone.matches) { if (r.parentElement !== tools) tools.prepend(r) }
+  else if (r.nextElementSibling !== t) $('.row2').insertBefore(r, t)
 }
 const setSearchHint = () => { $('#q').placeholder = mqPhone.matches ? 'Search…' : 'Search anything: “orange glow”, “kinetic type”, a creator…' }
 mqPhone.addEventListener('change', () => { placeTypeSlot(); setSearchHint() }); placeTypeSlot(); setSearchHint()
@@ -7400,7 +7424,7 @@ function requestPreviews() {
   if (!S.inboxOpen || !S.canWrite) return
   measureScreen()
   S.asked = S.asked || new Set()
-  const items = S.refs.filter(r => r.url && !S.asked.has(r.id) && ((r.preview === 'pending' && !r.image && (window.DAILIES_DESKTOP || PREVIEWABLE.includes(r.source) || (siteReady() && !['note', 'upload'].includes(r.source)))) || ((r.source === 'pinterest' || r.source === 'twitter') && (!r.media || (VIDEO_PREVIEWS && r.media !== 'image' && !r.video && !r.gif && needFrames(r)))) || (slidesReady() && (r.source === 'pinterest' || r.source === 'twitter') && !r.sl && r.kind !== 'note') || (pkReady() && r.source === 'pinterest' && !r.pk && /\/pin\/\d+/.test(r.url || '')) || (r.source === 'youtube' && (needFrames(r) || wideShort(r))) || (r.source === 'instagram' && needFrames(r) && !!r.image) || (r.via === 'instagram' && r.image && !r.caption && !r.title) || (VIDEO_PREVIEWS && window.DAILIES_DESKTOP && r.vidWant && !r.video)))
+  const items = S.refs.filter(r => r.url && !S.asked.has(r.id) && ((r.preview === 'pending' && !r.image && (window.DAILIES_DESKTOP || PREVIEWABLE.includes(r.source) || (siteReady() && !window.DAILIES_WEB && !['note', 'upload'].includes(r.source)))) || ((r.source === 'pinterest' || r.source === 'twitter') && (!r.media || (VIDEO_PREVIEWS && r.media !== 'image' && !r.video && !r.gif && needFrames(r)))) || (slidesReady() && (r.source === 'pinterest' || r.source === 'twitter') && !r.sl && r.kind !== 'note') || (pkReady() && r.source === 'pinterest' && !r.pk && /\/pin\/\d+/.test(r.url || '')) || (r.source === 'youtube' && (needFrames(r) || wideShort(r))) || (r.source === 'instagram' && needFrames(r) && !!r.image) || (r.via === 'instagram' && r.image && !r.caption && !r.title) || (VIDEO_PREVIEWS && window.DAILIES_DESKTOP && r.vidWant && !r.video)))
     // what you can see first, then the cards just below, then the rest: previews seem to be there already as you scroll
     .map((r, i) => [r, onScreenRank(r.id, i)]).sort((a, b) => a[1] - b[1]).map(x => x[0])
     .filter(r => r.source !== 'instagram' || document.visibilityState === 'visible') // Instagram only while you're looking (fewer automatic requests on your account)
@@ -8153,8 +8177,9 @@ function cleanHtml(html) {
 }
 // the first line is the title; the rest becomes the preview line in the list
 function noteText(html) {
-  const t = document.createElement('div')
-  t.innerHTML = html.replace(/<\/(p|div|h1|h2|h3|li|blockquote)>|<br\s*\/?>/gi, '$&\n')
+  const tpl = document.createElement('template') // inert: nothing in it loads or runs
+  tpl.innerHTML = String(html || '').replace(/<\/(p|div|h1|h2|h3|li|blockquote)>|<br\s*\/?>/gi, '$&\n')
+  const t = tpl.content
   t.querySelectorAll('figure').forEach(f => f.remove()) // pictures don't count as the note's words
   const lines = t.textContent.split('\n').map(x => x.trim()).filter(Boolean)
   return { title: (lines[0] || '').slice(0, 120), text: lines.join('\n').slice(0, 20000), preview: lines.slice(1).join(' ').slice(0, 140) }
@@ -9534,7 +9559,7 @@ const libRefs = () => SITE_LIB.map(([name, url, cats, price, about]) => ({ id: '
 const libKey = u => { try { const x = new URL(u); return x.hostname.replace(/^www\./, '') + x.pathname.replace(/\/+$/, '') } catch { return '' } }
 const LIB_BY = new Map(SITE_LIB.map(e => [libKey(e[1]), e]))
 const libOf = r => LIB_BY.get(libKey(r.url || '')) || LIB_BY.get(siteHost(r)) || null
-const priceOf = r => r.price || (libOf(r) || [])[3] || null
+const priceOf = r => { const p = r.price || (libOf(r) || [])[3] || null; return PRICE_LABEL[p] ? p : null } // only a known label
 // the site's own name from its page title ("Beautiful Free Images & Pictures | Unsplash" is Unsplash): the part that names the
 // domain, else a short first part, else the domain itself
 function siteName(r) {
@@ -9620,7 +9645,7 @@ $('#st-wrap').addEventListener('click', async e => {
   const more = e.target.closest('[data-more]')
   if (more) { e.stopPropagation(); if (c.classList.contains('lib')) openLibMenu(c.dataset.url, more); else openMenu(c.dataset.id, more); return }
   // a website card opens the website (its details, categories and price are in the ⋯ menu)
-  if (c.dataset.url) window.open(c.dataset.url, '_blank', 'noopener')
+  if (/^https?:\/\//i.test(c.dataset.url || '')) window.open(c.dataset.url, '_blank', 'noopener')
 })
 function placeCanvas() { document.documentElement.style.setProperty('--top-h', $('.top').getBoundingClientRect().bottom + 'px') }
 addEventListener('resize', () => { if (canvasOn() || notesOn() || projectsOn()) placeCanvas() })
@@ -9741,7 +9766,8 @@ function drawItem(id) {
   if (it.type === 'arrow') {
     if (!el) {
       el = document.createElementNS(SVGNS, 'g'); el.dataset.id = id; el.setAttribute('class', 'cv-arrow')
-      el.innerHTML = '<path class="hit" data-id="' + id + '"></path><path class="line" marker-end="url(#cv-ah)"></path><text></text>'
+      el.innerHTML = '<path class="hit"></path><path class="line" marker-end="url(#cv-ah)"></path><text></text>'
+      el.querySelector('.hit').dataset.id = id
       linksSvg.appendChild(el); CV.els.set(id, el)
     }
     el.querySelector('text').textContent = it.label || ''
