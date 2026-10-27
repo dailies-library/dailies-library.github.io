@@ -2121,7 +2121,10 @@ body.notes-mode .top { border-bottom-color: var(--line-2); }
 .fmt-fonts button { display: flex; justify-content: space-between; align-items: baseline; gap: 14px; width: 100%; height: 38px; padding: 0 12px; color: var(--text); font-size: 19px; text-align: left; border-radius: 8px; }
 .fmt-fonts button em { font: 500 10.5px var(--mono); font-style: normal; color: var(--faint); letter-spacing: .04em; text-transform: uppercase; }
 .fmt-fonts button[aria-checked="true"] { background: var(--surface-3); }
-.cv-fmt #fmt-size { width: 58px; text-align: center; font-family: var(--mono); }
+.cv-fmt #fmt-size { width: 58px; height: 30px; border: 0; border-radius: 8px; background: var(--surface-2); color: var(--text); text-align: center; font: 500 12.5px var(--mono); padding: 0 4px; outline: none; }
+.cv-fmt #fmt-size:hover { background: var(--surface-3); }
+.cv-fmt #fmt-size:focus { box-shadow: 0 0 0 1.5px var(--accent); background: var(--surface-3); }
+.cv-fmt #fmt-size::-webkit-calendar-picker-indicator { display: none !important; } /* the list opens on a click; no arrow inside the box */
 .cv-fmt .sep { align-self: stretch; width: 1px; margin: 4px 3px; background: var(--line-2); }
 .cv-fmt .swatch { min-width: 22px; width: 22px; height: 22px; padding: 0; border-radius: 50%; border: 2px solid transparent; }
 .cv-fmt .swatch[aria-pressed="true"] { border-color: var(--text); background: none; }
@@ -2924,7 +2927,7 @@ body { letter-spacing: -.005em; }
   <div class="cv-fmt" id="cv-fmt" role="toolbar" aria-label="Text style" hidden>
     <button type="button" id="fmt-font" class="fmt-font" title="Font" aria-haspopup="menu" aria-expanded="false"><span>Sans</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
     <button type="button" data-fmt="smaller" title="Smaller" aria-label="Smaller">A−</button>
-    <select id="fmt-size" title="Size" aria-label="Size"></select>
+    <input id="fmt-size" type="text" inputmode="numeric" list="fmt-sizes" title="Size: pick one or type any size" aria-label="Text size" autocomplete="off" spellcheck="false"><datalist id="fmt-sizes"></datalist>
     <button type="button" data-fmt="bigger" title="Bigger" aria-label="Bigger">A+</button>
     <span class="sep"></span>
     <button type="button" data-fmt="bold" title="Bold" aria-label="Bold"><b style="font-weight:800">B</b></button>
@@ -10399,7 +10402,9 @@ $('#fmt-fonts').addEventListener('click', e => { const f = e.target.closest('[da
 document.addEventListener('pointerdown', e => { if (!$('#fmt-fonts').hidden && !e.target.closest('#cv-fmt, #fmt-fonts')) fontMenu(false) }, true)
 $('#fmt-fonts').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation() }) // keeps the caret in the text
 $('#fmt-fonts').addEventListener('keydown', e => { if (e.key === 'Escape') { e.preventDefault(); fontMenu(false) } e.stopPropagation() })
-$('#fmt-size').innerHTML = TEXT_SIZES.map(v => `<option value="${v}">${v}</option>`).join('')
+$('#fmt-sizes').innerHTML = TEXT_SIZES.map(v => `<option value="${v}">`).join('')
+// any size can be typed too (Rohit, 27 Oct): whole numbers from 6 to 400
+const TEXT_MIN = 6, TEXT_MAX = 400
 const fmtTarget = () => { const id = CV.editing || CV.sel, it = id && CV.items.get(id); return it && it.type === 'text' && S.canWrite && canvasOn() ? [id, it] : null }
 function renderFmt() {
   const bar = $('#cv-fmt'), t = fmtTarget()
@@ -10409,8 +10414,7 @@ function renderFmt() {
   const fk = t[1].font || 'serif', fb = $('#fmt-font span')
   fb.textContent = TEXT_FONTS[fk][0]; fb.style.fontFamily = TEXT_FONTS[fk][1]
   const sz = $('#fmt-size')
-  if (!TEXT_SIZES.includes(L.size) && !sz.querySelector(`option[value="${L.size}"]`)) sz.insertAdjacentHTML('beforeend', `<option value="${L.size}">${L.size}</option>`)
-  sz.value = L.size
+  if (document.activeElement !== sz) sz.value = L.size // not while you're typing a size
   bar.querySelector('[data-fmt="bold"]').setAttribute('aria-pressed', !!t[1].bold)
   bar.querySelector('[data-fmt="italic"]').setAttribute('aria-pressed', L.italic)
   bar.querySelector('[data-fmt="underline"]').setAttribute('aria-pressed', L.underline)
@@ -10507,7 +10511,7 @@ function setTextStyle(patch) {
 function stepSize(dir) {
   const t = fmtTarget(); if (!t) return
   const cur = textLook(t[1]).size
-  const next = dir > 0 ? TEXT_SIZES.find(v => v > cur) || cur : [...TEXT_SIZES].reverse().find(v => v < cur) || cur
+  const next = dir > 0 ? TEXT_SIZES.find(v => v > cur) || Math.min(TEXT_MAX, cur + 40) : [...TEXT_SIZES].reverse().find(v => v < cur) || Math.max(TEXT_MIN, cur - 2)
   setTextStyle({ size: next })
 }
 // buttons keep the caret where it is while typing
@@ -10525,7 +10529,25 @@ $('#cv-fmt').addEventListener('click', e => {
   else if (f === 'smaller') stepSize(-1)
   else if (f === 'delete') deleteSelected()
 })
-$('#fmt-size').addEventListener('change', e => setTextStyle({ size: +e.target.value }))
+function typedSize() {
+  const t = fmtTarget(), sz = $('#fmt-size'); if (!t) return
+  const n = Math.round(parseFloat(sz.value))
+  if (!isFinite(n)) { sz.value = textLook(t[1]).size; return }
+  const size = Math.min(TEXT_MAX, Math.max(TEXT_MIN, n))
+  sz.value = size
+  if (size !== textLook(t[1]).size) setTextStyle({ size })
+}
+$('#fmt-size').addEventListener('change', typedSize)
+$('#fmt-size').addEventListener('focus', e => e.target.select())
+$('#fmt-size').addEventListener('keydown', e => {
+  if (e.key === 'Enter') { e.preventDefault(); typedSize(); const t = fmtTarget(); if (t && CV.editing === t[0]) CV.els.get(t[0])?.focus({ preventScroll: true }); else e.target.blur() }
+  else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') { // one point at a time
+    e.preventDefault()
+    const t = fmtTarget(); if (!t) return
+    const size = Math.min(TEXT_MAX, Math.max(TEXT_MIN, textLook(t[1]).size + (e.key === 'ArrowUp' ? 1 : -1)))
+    e.target.value = size; setTextStyle({ size }); e.target.focus(); e.target.select()
+  }
+})
 $('#cv-fmt').addEventListener('keydown', e => { if (e.key === 'Escape') { e.preventDefault(); if (!$('#fmt-fonts').hidden) fontMenu(false); else { if (CV.editing) finishEdit(); select(null) } } e.stopPropagation() })
 addEventListener('resize', () => placeFmt())
 if (document.fonts) document.fonts.addEventListener('loadingdone', () => { if (canvasOn()) scheduleGeom() }) // a web font arriving changes text widths
