@@ -559,6 +559,7 @@
   --poster-a: #17171d; --poster-b: #0e0e0e;
   --display: 'General Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
   --ui: 'General Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --tagface: 'Instrument Serif', Georgia, 'Times New Roman', serif;
   --mono: 'General Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
   --gap: 24px; --radius: 16px;
   color-scheme: dark;
@@ -765,6 +766,7 @@ body.canvas-mode .tagdrawer, body.notes-mode .tagdrawer { display: none; }
 .tab[aria-pressed="true"] .n { color: color-mix(in srgb, var(--bg) 55%, transparent); }
 .tab.boardtab { text-transform: capitalize; }
 .tab.tagtab i { font-style: normal; color: var(--faint); margin-right: -4px; }
+.tab.tagtab .tn { font: italic 700 1.36em/1 var(--tagface); letter-spacing: .005em; }
 .tab.tagtab[aria-pressed="true"] i { color: inherit; opacity: .5; }
 .tabtail { display: none; } /* (phones show it, see below) */
 .tabs .div { flex: none; width: 1px; margin: 8px 6px; background: var(--line-2); }
@@ -837,6 +839,7 @@ main { padding: 32px 40px 96px; }
 @keyframes collin { from { opacity: 0; transform: translateY(10px); } }
 @media (prefers-reduced-motion: reduce) { .boardshelf, .boardshelf .coll { transition: none; animation: none; } }
 .boardshelf .coll b { text-transform: capitalize; }
+.coll[data-tag] b { font: italic 700 18px/1.1 var(--tagface); letter-spacing: .005em; }
 .coll[aria-pressed="true"] .trio { outline: 2px solid var(--text); outline-offset: 3px; }
 .coll[aria-pressed="true"] b { color: var(--text); }
 .boardshelf.picked .coll:not([aria-pressed="true"]) .trio { opacity: .55; }
@@ -1620,7 +1623,8 @@ body.canvas-mode .fab { display: none !important; }
 .taghead { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 28px; margin: 0 0 32px; padding: 30px 34px; border-radius: 24px; background: linear-gradient(135deg, var(--surface-2), var(--surface) 70%); border: 1px solid var(--line); overflow: hidden; animation: unfold .35s cubic-bezier(.2,.8,.2,1); }
 .th-text { min-width: 0; flex: 1; }
 .th-kicker { margin: 0 0 6px; font: 500 13px var(--ui); color: var(--muted); }
-.th-title { margin: 0; font: 500 clamp(30px, 4vw, 52px)/1.05 var(--display); letter-spacing: -.02em; color: var(--text); outline: none; overflow-wrap: anywhere; border-radius: 8px; }
+/* hashtag names (this title, the chips, the shelf) in bold italic Instrument Serif, the user's pick (27 Oct); the font has one weight, so the browser thickens it */
+.th-title { margin: 0; font: italic 700 clamp(46px, 5.6vw, 76px)/1 var(--tagface); letter-spacing: -.005em; color: var(--text); outline: none; overflow-wrap: anywhere; border-radius: 8px; }
 .th-sub { margin: 10px 0 0; max-width: 640px; font-size: 16px; line-height: 1.5; color: var(--muted); outline: none; border-radius: 6px; min-height: 1.5em; }
 .th-sub:empty::before { content: attr(data-ph); color: var(--faint); }
 .taghead.ro .th-sub:empty { display: none; }
@@ -5604,12 +5608,12 @@ function render() {
   const tdSig = S.tag + '|' + S.unsorted + '|' + S.unsortedCount + '|' + tagKeys.map(t => t + tags[t]).join() + '|' + found.map(g => g[1] + g[2]).join() + '|' + (S.smart && S.smart.group)
   if ($('#td-row').dataset.sig !== tdSig) {
     $('#td-row').dataset.sig = tdSig
-    $('#td-row').innerHTML = (sortChip + tagKeys.map(t => `<button class="tab tagtab" data-tag="${esc(t)}" aria-pressed="${S.tag === t}"><i>#</i>${esc(t)} <span class="n">${tags[t] || 0}</span></button>`).join('') || '<span class="hint">No hashtags yet</span>')
+    $('#td-row').innerHTML = (sortChip + tagKeys.map(t => `<button class="tab tagtab" data-tag="${esc(t)}" aria-pressed="${S.tag === t}"><i>#</i><span class="tn">${esc(t)}</span> <span class="n">${tags[t] || 0}</span></button>`).join('') || '<span class="hint">No hashtags yet</span>')
       + (found.length ? '<span class="div"></span>' + found.map(([i, n, c]) => `<button class="tab tagtab" data-group="${i}" aria-pressed="${!!(S.smart && S.smart.group === n)}" title="A group Dailies found: these look alike"><i>✦</i>${esc(n)} <span class="n">${c}</span></button>`).join('') : '')
   }
   if (S.unsorted && !S.hashOpen) navHtml += `<button class="tab sorttab" data-unsorted aria-pressed="true" title="Clear">To sort <span class="n">${S.unsortedCount}</span><span class="x">×</span></button>`
   if (S.tag && !S.hashOpen) navHtml += '<span class="div"></span>' +
-    `<button class="tab tagtab" data-tag="${esc(S.tag)}" aria-pressed="true" title="Clear"><i>#</i>${esc(S.tag)} <span class="n">${tags[S.tag] || 0}</span><span class="x">×</span></button>`
+    `<button class="tab tagtab" data-tag="${esc(S.tag)}" aria-pressed="true" title="Clear"><i>#</i><span class="tn">${esc(S.tag)}</span> <span class="n">${tags[S.tag] || 0}</span><span class="x">×</span></button>`
   // apps and boards switch off by clicking them again (or All); Clear only shows once two or more other filters stack up
   const stacked = [S.kind || S.type || S.fmt, S.tag, S.color, S.q || S.smart, S.similar, S.newOnly, S.unsorted].filter(Boolean).length
   $('#schips').innerHTML = special + (stacked >= 2 ? '<button type="button" class="tab clearall" data-clearall title="Clear every filter">× Clear</button>' : '')
@@ -5671,7 +5675,7 @@ function render() {
         vt.dataset.sig = sig; vt.hidden = false
         if (fresh) { vt.style.animation = 'none'; void vt.offsetWidth; vt.style.animation = '' }
         const n = S.refs.filter(r => r.via === 'slack').length
-        vt.innerHTML = `<span class="bar"></span><span class="lbl">In Slack</span><button class="tab tagtab" data-viaall aria-pressed="${S.via === 'slack' && !S.tag}">All <span class="n">${n}</span></button>${noteCount ? `<button class="tab tagtab" data-viakind="notes" aria-pressed="${S.via === 'notes'}">Notes <span class="n">${noteCount}</span></button>` : ''}` + tagKeys.slice(0, 14).map(t => `<button class="tab tagtab" data-tag="${esc(t)}" aria-pressed="${S.tag === t}"><i>#</i>${esc(t)} <span class="n">${tags[t] || 0}</span></button>`).join('')
+        vt.innerHTML = `<span class="bar"></span><span class="lbl">In Slack</span><button class="tab tagtab" data-viaall aria-pressed="${S.via === 'slack' && !S.tag}">All <span class="n">${n}</span></button>${noteCount ? `<button class="tab tagtab" data-viakind="notes" aria-pressed="${S.via === 'notes'}">Notes <span class="n">${noteCount}</span></button>` : ''}` + tagKeys.slice(0, 14).map(t => `<button class="tab tagtab" data-tag="${esc(t)}" aria-pressed="${S.tag === t}"><i>#</i><span class="tn">${esc(t)}</span> <span class="n">${tags[t] || 0}</span></button>`).join('')
       }
     } else if (!vt.hidden) { vt.hidden = true; vt.dataset.sig = '' }
     const scope = S.via ? (S.via === 'stills' ? 'Stills & Videos' : S.via === 'slack' ? 'Slack' : S.via === 'notes' ? 'Notes' : S.via) : S.board ? S.board : S.source !== 'all' ? info(S.source).label : ''
