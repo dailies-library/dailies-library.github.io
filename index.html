@@ -1076,10 +1076,15 @@ body.sites-mode .row1 { padding-bottom: 12px; }
 .sc-logo { width: var(--sc-logo, 46px) !important; height: var(--sc-logo, 46px) !important; }
 .sc-logo img { width: calc(var(--sc-logo, 46px) * .7) !important; height: calc(var(--sc-logo, 46px) * .7) !important; }
 .st-view { display: inline-flex; padding: 3px; border-radius: 999px; border: 1px solid var(--line); }
-.st-view button { width: 34px; height: 28px; border: 0; border-radius: 999px; background: none; color: var(--muted); display: grid; place-items: center; cursor: pointer; }
-.st-view button svg { width: 15px; height: 15px; fill: currentColor; }
+.st-view button { width: 44px; height: 36px; border: 0; border-radius: 999px; background: none; color: var(--muted); display: grid; place-items: center; cursor: pointer; }
+.st-view button svg { width: 19px; height: 19px; fill: currentColor; }
 .st-view button[aria-pressed="true"] { background: var(--surface-3); color: var(--text); }
 .st-size input { width: 110px; }
+/* bigger layout and size controls on Websites (Rohit, 27 Oct) */
+.st-filt .st-size svg { width: 17px; height: 17px; } /* (.st-filt: ahead of the shared .gb-size rules, which load later) */
+.st-filt .st-size svg:last-child { width: 20px; height: 20px; }
+.st-filt .st-size input::-webkit-slider-thumb { width: 20px; height: 20px; }
+.st-filt .st-size input::-moz-range-thumb { width: 20px; height: 20px; }
 /* list: one row per site, the name on the left and what it is beside it */
 .st-wrap.logos.list { grid-template-columns: 1fr; gap: 0; }
 .st-wrap.list .st-head, .st-wrap.list .st-cats { margin-bottom: 10px; }
@@ -1087,7 +1092,7 @@ body.sites-mode .row1 { padding-bottom: 12px; }
 .st-wrap.list .site.sc:hover { transform: none; background: var(--surface); border-radius: 12px; border-bottom-color: transparent; }
 .st-wrap.list .sc-top { padding-right: 0 !important; }
 .st-wrap.list .sc-d { -webkit-line-clamp: var(--sc-lines, 1); }
-.st-wrap.list .sc-star, .st-wrap.list .site.sc .more { top: 50%; translate: 0 -50%; }
+.st-wrap.list .sc-star, .st-wrap.list .sc-arch, .st-wrap.list .site.sc .more { top: 50%; translate: 0 -50%; }
 
 .site.sc { padding: 16px 16px 16px; display: grid; gap: 12px; align-content: start; }
 .sc-top { display: flex; align-items: center; gap: 12px; min-width: 0; padding-right: 68px; }
@@ -1122,12 +1127,18 @@ body.sites-mode .row1 { padding-bottom: 12px; }
 .sc-star.on { color: #f5b301; } .sc-star.on svg { fill: currentColor; }
 .sc-star:active { transform: scale(.85); }
 .site.sc .sc-star { right: 44px; }
-.site.sc .sc-top { padding-right: 76px; }
+.site.sc .sc-top { padding-right: 112px; } /* room for archive, star and ⋯ */
+.sc-arch { position: absolute; top: 10px; right: 82px; z-index: 2; width: 38px; height: 38px; border-radius: 999px; border: 0; background: none; color: var(--faint); display: grid; place-items: center; cursor: pointer; transition: color .15s, transform .15s; }
+.sc-arch svg { width: 20px; height: 20px; fill: none; }
+.sc-arch:hover { color: var(--text); }
+.sc-arch:active { transform: scale(.85); }
+.sc-arch.solo { right: 44px; }
+.st-cats .tab.dim { opacity: .45; } /* in Favourites: a category without favourites, still there to pick */ /* in Archived the star is hidden: unarchive takes its place */
 .st-cats .st-arch { display: inline-flex; align-items: center; gap: 6px; }
 .st-cats .st-arch svg { width: 14px; height: 14px; }
-@media (max-width: 760px) { .st-wrap.list .site.sc { grid-template-columns: 1fr; gap: 6px; padding-right: 12px; } .st-wrap.list .sc-top { padding-right: 76px !important; } .st-wrap.list .sc-d { -webkit-line-clamp: 2; } .st-wrap.list .sc-star, .st-wrap.list .site.sc .more { top: calc(var(--sc-pad, 12px) + 4px); translate: none; } }
+@media (max-width: 760px) { .st-wrap.list .site.sc { grid-template-columns: 1fr; gap: 6px; padding-right: 12px; } .st-wrap.list .sc-top { padding-right: 112px !important; } .st-wrap.list .sc-d { -webkit-line-clamp: 2; } .st-wrap.list .sc-star, .st-wrap.list .site.sc .more { top: calc(var(--sc-pad, 12px) + 4px); translate: none; } }
 @media (max-width: 520px) { .st-size { display: none !important; } }
-@media (max-width: 760px) { .st-filt { margin-left: 0; } .site.sc .sc-top { padding-right: 70px; } .sc-star { top: 9px; right: 9px; } .site.sc .sc-star { right: 42px; } }
+@media (max-width: 760px) { .st-filt { margin-left: 0; } .site.sc .sc-top { padding-right: 108px; } .sc-star { top: 9px; right: 9px; } .site.sc .sc-star { right: 42px; } .sc-arch { top: 9px; right: 78px; } .sc-arch.solo { right: 42px; } }
 @media (max-width: 760px) {
   .st-wrap.logos { grid-template-columns: 1fr; gap: 8px; }
   .site.sc { padding: 12px 12px 13px; gap: 8px; }
@@ -5539,9 +5550,9 @@ function render() {
     if (r.board) { boardCounts[r.board] = (boardCounts[r.board] || 0) + 1; boardSrc[r.board] ||= r.source }
   }
   { const gn = ghostList().length; if (gn) { total += gn; counts.pinterest = (counts.pinterest || 0) + gn } } // pins on their way count already
-  // the apps you import from are always there, with 0 until something arrives, so the bar never reshuffles (Rohit, 26 Oct:
-  // a library from one platform made the phone's bar jump); X follows them once it has references
-  const order = [...PLATFORM_TABS, ...['twitter'].filter(k => counts[k] || S.source === k)]
+  // the apps you save from are always there, with 0 until something arrives, so the bar never reshuffles (Rohit, 26 Oct: a
+  // library from one platform made the phone's bar jump; 27 Oct: X and Slack too, even in a new library)
+  const order = [...PLATFORM_TABS, 'twitter']
   const boards = Object.keys(boardCounts).sort((a, b) => boardCounts[b] - boardCounts[a])
   // each Pinterest board you follow gets its own chip, after the sources
   const plain = !S.board && !S.via
@@ -5554,8 +5565,8 @@ function render() {
   const newCount = S.since ? S.refs.filter(isNew).length : 0
   const newTab = (newCount || S.newOnly ? `<button class="tab newtab" data-new aria-pressed="${S.newOnly}" title="Saved since your last visit"><i></i>New <span class="n">${newCount}</span></button>` : '')
   // Categories and Slack: at the end of the tabs on a computer; on a phone they sit at the left of the line with Type and Sort (#tabtail)
-  const tailHtml = `<button class="tab icontab hashtab${S.tag || S.unsorted || S.hashOpen ? ' on' : ''}" data-hash aria-expanded="${!!S.hashOpen}" aria-label="Categories and hashtags" title="Categories">${CAT_ICON}<span class="nm">Categories</span></button>` + (slackCount ? `<button class="tab icontab" data-via="slack" aria-pressed="${S.via === 'slack' || S.via === 'notes'}" aria-label="Slack, ${slackCount}" title="Shared to #${esc(S.settings?.channelName || 'Slack')} · ${slackCount}">${tabGlyph('slack')}<span class="nm">Slack</span></button>`
-    : noteCount || S.via === 'notes' ? `<button class="tab icontab" data-via="notes" aria-pressed="${S.via === 'notes'}" aria-label="Notes, ${noteCount}" title="Your text notes · ${noteCount}">${tabGlyph('note')}<span class="nm">Notes</span></button>` : '')
+  const tailHtml = `<button class="tab icontab hashtab${S.tag || S.unsorted || S.hashOpen ? ' on' : ''}" data-hash aria-expanded="${!!S.hashOpen}" aria-label="Categories and hashtags" title="Categories">${CAT_ICON}<span class="nm">Categories</span></button>` + `<button class="tab icontab" data-via="slack" aria-pressed="${S.via === 'slack' || (S.via === 'notes' && !!slackCount)}" aria-label="Slack, ${slackCount}" title="Shared to #${esc(S.settings?.channelName || 'Slack')} · ${slackCount}">${tabGlyph('slack')}<span class="nm">Slack</span></button>` +
+    (!slackCount && (noteCount || S.via === 'notes') ? `<button class="tab icontab" data-via="notes" aria-pressed="${S.via === 'notes'}" aria-label="Notes, ${noteCount}" title="Your text notes · ${noteCount}">${tabGlyph('note')}<span class="nm">Notes</span></button>` : '')
   const SHUFFLE_IC = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h3c4 0 6 10 10 10h5M18 14l3 3-3 3M3 17h3c1.5 0 2.7-1.4 3.7-3M14 7.3c.6-.2 1.3-.3 2-.3h5M18 4l3 3-3 3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>'
   const shuffleHtml = `<button class="tab icontab" data-shuffle aria-pressed="false" aria-label="Shuffle the order" title="Shuffle">${SHUFFLE_IC}<span class="nm">Shuffle</span></button>`
   let navHtml = `<button class="tab" data-source="all" aria-pressed="${S.source === 'all' && plain}">All <span class="n">${total}</span></button>` + newTab +
@@ -5617,7 +5628,15 @@ function render() {
   if (!S.loaded) return
   const onlyPlatform = PLATFORM_TABS.includes(S.source) && !S.board && !S.via && !S.q && !S.tag && !S.kind && !S.type && !S.color && !S.newOnly && !S.similar && !S.smart
   const working0 = IMP.run && !IMP.run.finished
-  if (onlyPlatform && !S.filtered.length && !(working0 && S.source === 'pinterest')) {
+  const plainView = !S.board && !S.q && !S.tag && !S.kind && !S.type && !S.color && !S.newOnly && !S.similar && !S.smart
+  if (plainView && !S.filtered.length && ((S.source === 'twitter' && !S.via) || S.via === 'slack')) { // the always-there X and Slack, still empty
+    empty.hidden = false
+    empty.classList.remove('working')
+    empty.innerHTML = S.via === 'slack'
+      ? (window.DAILIES_WEB ? '<h2>Nothing from Slack yet</h2><p>Soon you’ll share links and pictures to Dailies in Slack, from your phone or your computer, and they’ll land here.</p>'
+        : `<h2>Nothing from Slack yet</h2><p>Share a link to <b>#${esc(S.settings?.channelName || 'your references channel')}</b> in Slack and it lands here.</p>`)
+      : '<h2>No X references yet</h2><p>Press the <b>Save</b> button on a post on x.com (with the Chrome extension), or paste a post’s link into <b>Save</b>.</p>'
+  } else if (onlyPlatform && !S.filtered.length && !(working0 && S.source === 'pinterest')) {
     empty.hidden = false
     empty.classList.remove('working')
     const name = info(S.source).label, can = S.canWrite && !window.DAILIES_DESKTOP
@@ -6385,7 +6404,7 @@ function openMenu(id, anchor, at = null) {
   menu.innerHTML = `
     ${S.canWrite ? `<button type="button" role="menuitem" data-act="rename">${r.kind === 'note' ? 'Edit note' : 'Rename'}</button>
     <button type="button" role="menuitem" data-act="project">Add to project…</button>
-    ${isSite(r) ? '<button type="button" role="menuitem" data-act="sitecats">Categories and price…</button>' : ''}` : ''}
+    ${isSite(r) ? '<button type="button" role="menuitem" data-act="sitemove">Move to category…</button><button type="button" role="menuitem" data-act="sitecats">Categories and price…</button>' : ''}` : ''}
     ${isSite(r) ? '<button type="button" role="menuitem" data-act="details">Details and notes</button>' : ''}
     ${isSite(r) && S.canWrite ? `<button type="button" role="menuitem" data-act="sitearch">${isArch(r) ? 'Unarchive' : 'Archive'}</button>` : ''}
     <button type="button" role="menuitem" data-act="similar">Find similar</button>
@@ -6397,7 +6416,7 @@ function openMenu(id, anchor, at = null) {
   menu.hidden = false
   const a = anchor.getBoundingClientRect(), m = menu.getBoundingClientRect()
   if (at) placeAt(menu, Math.max(8, Math.min(innerWidth - m.width - 8, at.x)), at.y + m.height > innerHeight - 8 ? Math.max(8, at.y - m.height) : at.y)
-  else placeAt(menu, Math.max(8, Math.min(innerWidth - m.width - 8, a.right - m.width)), a.bottom + 6 + m.height > innerHeight ? a.top - m.height - 6 : a.bottom + 6)
+  else menuInView()
   menu.querySelector('button, a').focus({ preventScroll: true })
 }
 // a board (or Instagram collection): stop following it, or remove it with its pins (they won't come back from the board)
@@ -6441,12 +6460,46 @@ function closeMenu() {
   document.querySelectorAll('.more[aria-expanded="true"]').forEach(b => b.setAttribute('aria-expanded', 'false'))
   menuFor = null
 }
+// "Move to category": the site lives in just the one you pick, where you use it most (Rohit, 27 Oct: a site can fit several
+// categories, moving it is different from favouriting it); later saves from its address follow, and the toast can undo it
+function siteMoveMenu(name, cur) {
+  const only = k => cur.length === 1 && cur[0] === k
+  $('#cardmenu').innerHTML = `<div class="mc-h">Move ${esc(name)} to</div>` +
+    siteCatList().map(([k, l]) => `<button type="button" role="menuitemradio" data-sitemove-to="${esc(k)}" aria-checked="${only(k)}"><i>${only(k) ? '✓' : ''}</i>${esc(l)}</button>`).join('')
+  menuInView()
+}
+// the card menu sits by the ⋯ that opened it: below it, or above when there's no room, and always inside the window (also
+// after its list changes, as Move to category and Categories do)
+function menuInView() {
+  const menu = $('#cardmenu'), m = menu.getBoundingClientRect(), anchor = document.querySelector('.more[aria-expanded="true"]')
+  const a = anchor ? anchor.getBoundingClientRect() : m
+  const below = a.bottom + 6, above = a.top - m.height - 6
+  const y = below + m.height <= innerHeight - 8 ? below : above >= 8 ? above : Math.max(8, innerHeight - m.height - 8)
+  placeAt(menu, Math.max(8, Math.min(innerWidth - m.width - 8, a.right - m.width)), y)
+}
+async function moveSite(id, k) {
+  let r = byId(id)
+  const prev = r ? siteCatsOf(r) : null
+  if (!r && id.startsWith('lib:')) { // a built-in website: moving it keeps it in your own library, already described and priced
+    const e2 = SITE_LIB.find(x => 'lib:' + x[1] === id); if (!e2) return
+    const [name, url, , price, about] = e2
+    const res = await saveRef({ url })
+    await patch(res.id, { title: name, caption: about, price })
+    r = byId(res.id) || { id: res.id, url }
+  }
+  if (!r) return
+  r.siteCats = [k] // seen at once; the saved copy follows
+  await setSiteCats(r, [k])
+  redrawSites()
+  toast(`Moved to ${siteCatLabel(k)}`, prev ? { label: 'Undo', run: async () => { r.siteCats = prev; await setSiteCats(r, prev); redrawSites() } } : undefined)
+}
 // a website's categories, ticked in the menu itself (it stays open, so several can be changed in a row)
 function siteCatsMenu(r) {
   const menu = $('#cardmenu'), on = siteCatsOf(r)
   menu.innerHTML = `<div class="mc-h">Categories for ${esc(r.domain || siteHost(r) || 'this site')}</div>` +
     siteCatList().map(([k, l]) => `<button type="button" role="menuitemcheckbox" data-sitecat-tog="${esc(k)}" aria-checked="${on.includes(k)}"><i>${on.includes(k) ? '✓' : ''}</i>${esc(l)}</button>`).join('') +
     `<div class="mc-h">Price</div>` + Object.entries(PRICE_LABEL).map(([k, l]) => `<button type="button" role="menuitemradio" data-siteprice-set="${k}" aria-checked="${priceOf(r) === k}"><i>${priceOf(r) === k ? '✓' : ''}</i>${l}</button>`).join('')
+  menuInView()
 }
 $('#cardmenu').addEventListener('click', async e => {
   const ps = e.target.closest('[data-siteprice-set]')
@@ -6456,6 +6509,14 @@ $('#cardmenu').addEventListener('click', async e => {
     const k = ps.dataset.sitepriceSet, next = priceOf(r) === k ? null : k
     r.price = next; siteCatsMenu(r)
     await patch(r.id, { price: next }); redrawSites(); return
+  }
+  const mv = e.target.closest('[data-sitemove-to]')
+  if (mv && menuFor) {
+    e.stopPropagation()
+    const id = menuFor, k = mv.dataset.sitemoveTo
+    closeMenu()
+    try { await moveSite(id, k) } catch (err) { toast('Couldn’t move it: ' + (err.message || err)) }
+    return
   }
   const tog = e.target.closest('[data-sitecat-tog]')
   if (tog && menuFor) {
@@ -6473,6 +6534,7 @@ $('#cardmenu').addEventListener('click', async e => {
   if (!item || !menuFor) return
   if (menuFor.startsWith('lib:')) {
     const url = menuFor.slice(4), act = item.dataset.act, e2 = SITE_LIB.find(x => x[1] === url)
+    if (act === 'lib-move' && e2) { e.stopPropagation(); siteMoveMenu(e2[0], e2[2].split(' ')); return }
     closeMenu()
     if (act === 'lib-arch' && e2) archiveSite(url, e2[0], !archivedSet().has(libKey(url)))
     return
@@ -6502,6 +6564,7 @@ $('#cardmenu').addEventListener('click', async e => {
   if (act === 'open') { closeMenu(); return }
   if (act === 'rename') { closeMenu(); openRename(r); return }
   if (act === 'similar') { closeMenu(); showSimilar(r.id); return }
+  if (act === 'sitemove') { e.stopPropagation(); siteMoveMenu(r.domain || siteHost(r) || 'this site', siteCatsOf(r)); return }
   if (act === 'sitecats') { e.stopPropagation(); siteCatsMenu(r); return }
   if (act === 'details') { closeMenu(); openDetail(r.id); return }
   if (act === 'sitearch') { closeMenu(); archiveSite(r.url, nameOf(r), !isArch(r)); return }
@@ -8089,16 +8152,18 @@ function webSettings(body, sec, noun) {
       <p class="sline">Signed in as <b>${esc(W.email || '')}</b>. Your library is private: only you can see it.</p>
       <div class="ss-actions"><button class="btn" id="web-signout" type="button">Sign out</button></div>`))
   body.insertAdjacentHTML('beforeend', sec('data', glyph('note'), 'Your data', '', noun(S.refs.length, 'reference'), `
-      <p class="sline">Bring in a library you already have: a Dailies file from claude.ai (<b>Settings → Your data → Move to the Mac app</b>) or from Dailies for Mac. Everything in it is added; nothing here is removed.</p>
-      <div class="ss-actions"><label class="btn primary">Import a Dailies file<input type="file" id="web-import" accept=".zip,application/zip" hidden></label><button class="btn" id="set-export" type="button">Export JSON</button></div>
+      <p class="sline"><b>Export everything</b> saves your whole library as one Dailies file: references, notes, canvases, projects, settings, pictures and videos. <b>Import a Dailies file</b> brings one back, whether it came from here, another browser, a colleague, or the claude.ai and Mac versions. What's already here stays.</p>
+      <div class="ss-actions"><button class="btn primary" id="web-export" type="button">Export everything</button><label class="btn">Import a Dailies file<input type="file" id="web-import" accept=".zip,application/zip" hidden></label></div>
       <p class="sline" id="web-import-note"></p>
-      <p class="sline"><b>Start fresh</b>: delete everything in your library (references, notes, canvases, projects, settings, pictures and videos) and begin again. You stay signed in. It can’t be undone, so use <b>Export JSON</b> first if you want a copy.</p>
+      <p class="sline"><b>Start fresh</b>: delete everything in your library (references, notes, canvases, projects, settings, pictures and videos) and begin again. You stay signed in. It can’t be undone, so use <b>Export everything</b> first if you want a copy you can bring back.</p>
       <div class="ss-actions"><button class="btn danger" id="web-fresh" type="button">Start fresh</button></div>`))
   const out = $('#web-signout')
   if (out) out.onclick = () => W.signOut()
+  const wx = $('#web-export')
+  if (wx) wx.onclick = () => exportLibrary(wx, 'Export everything', (n, f) => `Saved ${plural(n, 'reference')} and ${f.toLocaleString()} ${f === 1 ? 'picture or video' : 'pictures and videos'} in one Dailies file`)
   const fresh = $('#web-fresh')
   if (fresh) fresh.onclick = async () => {
-    const ok = await askConfirm({ title: 'Start fresh?', body: `This deletes ${plural(S.refs.length, 'reference')}, your notes, canvases, projects, settings, pictures and videos. You stay signed in. It can’t be undone.`, yes: 'Delete everything' })
+    const ok = await askConfirm({ title: 'Start fresh?', body: `This deletes ${plural(S.refs.length, 'reference')}, your notes, canvases, projects, settings, pictures and videos. You stay signed in. It can’t be undone: use Export everything first if you want a copy.`, yes: 'Delete everything' })
     if (!ok) return
     const note = $('#web-import-note'), say = m => { if (note) note.textContent = m }
     fresh.disabled = true
@@ -8161,13 +8226,18 @@ function wireMacSettings() {
 }
 // ---- claude.ai: everything in the library as one file the Mac app imports (references, notes, canvases, tags, pictures, videos)
 const snapOnce = q => new Promise((res, rej) => { let off = null, done = false; off = q.onSnapshot(s => { if (done) return; done = true; res(s); setTimeout(() => { try { off && off() } catch { /* already off */ } }) }, rej) })
-async function exportForMac() {
+// The whole library as one Dailies file (.zip): every collection, and every picture and video it uses. "Import a Dailies file"
+// brings it back, on the website, in Dailies for Mac or into another account. On the website a file's id carries its owner's
+// folder ("<uid>/<file>"); the file is packed without it, so the import gives each one a new home in whoever's account it is.
+const OWNER_DIR = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/(?=[0-9a-f]{32})/g
+const portable = id => String(id).replace(OWNER_DIR, '')
+async function exportLibrary(btn, label, done) {
   if (!S.downloads || !S.db) return
-  const btn = $('#set-macexport'); if (btn) { btn.disabled = true; btn.textContent = 'Packing…' }
+  if (btn) { btn.disabled = true; btn.textContent = 'Packing…' }
   try {
     const cols = {}
     const grab = async name => { const sn = await snapOnce(S.db.collection(name)); const o = {}; for (const d of sn.docs) o[d.id] = d.data(); cols[name] = o; return o }
-    await grab('refs'); await grab('notes'); await grab('tags')
+    await grab('refs'); await grab('notes'); await grab('tags'); await grab('projects')
     const cvs = await grab('canvases')
     for (const id of Object.keys(cvs)) await grab(`canvases/${id}/items`)
     const set = await snapOnce(S.db.doc('settings/main')).catch(() => null)
@@ -8175,7 +8245,7 @@ async function exportForMac() {
     const ids = new Set(), add = v => { if (typeof v === 'string' && v && !/^(https?:|data:)/.test(v)) ids.add(v) }
     for (const r of Object.values(cols.refs)) { add(r.image); add(r.thumb); add(r.video); add(r.gif); if (r.scrub) add(r.scrub.id) }
     for (const [k, items] of Object.entries(cols)) if (k.startsWith('canvases/')) for (const it of Object.values(items)) add(it.image)
-    for (const n of Object.values(cols.notes)) for (const m of String(n.html || '').matchAll(/data-nimg="?([\w-]+)/g)) add(m[1])
+    for (const n of Object.values(cols.notes)) for (const m of String(n.html || '').matchAll(/data-nimg="?([\w/-]+(?:\.[a-z0-9]{2,4})?)/g)) add(m[1])
     const files = [], manifest = { version: 1, exportedAt: new Date().toISOString(), assets: {} }
     let i = 0
     for (const id of ids) {
@@ -8183,18 +8253,19 @@ async function exportForMac() {
       try {
         const res = await fetch(imgSrc(id)); if (!res.ok) continue
         const b = await res.blob()
-        manifest.assets[id] = b.type || 'application/octet-stream'
-        files.push([`assets/${id}`, new Uint8Array(await b.arrayBuffer())])
+        manifest.assets[portable(id)] = b.type || 'application/octet-stream'
+        files.push([`assets/${portable(id)}`, new Uint8Array(await b.arrayBuffer())])
       } catch { /* a file that's gone is skipped */ }
     }
     const enc = new TextEncoder()
-    for (const [name, obj] of Object.entries(cols)) files.push([`db/${name.replace(/\//g, '~')}.json`, enc.encode(JSON.stringify(obj))])
+    for (const [name, obj] of Object.entries(cols)) files.push([`db/${name.replace(/\//g, '~')}.json`, enc.encode(JSON.stringify(obj).replace(OWNER_DIR, ''))])
     files.push(['manifest.json', enc.encode(JSON.stringify(manifest))])
     await saveFile(`dailies-library-${new Date().toISOString().slice(0, 10)}.zip`, makeZip(files))
-    toast(`Packed ${Object.keys(cols.refs).length} references and ${Object.keys(manifest.assets).length} files. Now open Dailies for Mac.`)
+    toast(done(Object.keys(cols.refs).length, Object.keys(manifest.assets).length))
   } catch (e) { toast('Couldn’t pack the library: ' + (e.message || e)) }
-  finally { if (btn) { btn.disabled = false; btn.textContent = 'Move to the Mac app' } }
+  finally { if (btn) { btn.disabled = false; btn.textContent = label } }
 }
+const exportForMac = () => exportLibrary($('#set-macexport'), 'Move to the Mac app', (n, f) => `Packed ${n} references and ${f} files. Now open Dailies for Mac.`)
 
 // pinterest.com/<user>/<board>/ follows one board; pinterest.com/<user>/ follows everything they pin.
 function parseBoard(raw) {
@@ -9449,7 +9520,11 @@ function renderSites() {
   const cats = [...siteCatList(), ['other', 'Other']]
   const pick = S.siteCat && cats.some(c => c[0] === S.siteCat) ? S.siteCat : null
   const list = pick ? all.filter(r => catsOf.get(r.id).includes(pick)) : all
-  const shownCats = cats.filter(([k]) => counts[k] || k === pick || k.startsWith('c-'))
+  // in Favourites every category stays on the panel and filters your favourites; one without favourites is dimmed, not gone
+  // (Rohit, 27 Oct: the other options went away when Favourites was on)
+  const anyIn = {}
+  if (favOnly) for (const r of base) if (!isArch(r) && priced(r) && terms.every(t => hay(r).includes(t))) for (const k of siteCatsOf(r)) anyIn[k] = true
+  const shownCats = cats.filter(([k]) => counts[k] || anyIn[k] || k === pick || k.startsWith('c-'))
   const sig = [S.siteLayout, S.siteArch, archCount, favOnly, price, pick, terms.join(' '), JSON.stringify(counts), favCount, shownCats.map(c => c[1]).join(), list.map(r => r.id + (r.title || '') + (r.price || '') + isFav(r) + catsOf.get(r.id).join()).join('|')].join('#')
   if (wrap.dataset.sig === sig && wrap.dataset.shown === '1') return
   wrap.dataset.sig = sig
@@ -9462,13 +9537,15 @@ function renderSites() {
     <label class="gb-size st-size" title="${S.siteLayout === 'list' ? 'Row size' : 'Card size'}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h4v4H4zM10 4h4v4h-4zM16 4h4v4h-4zM4 10h4v4H4zM10 10h4v4h-4zM16 10h4v4h-4zM4 16h4v4H4zM10 16h4v4h-4zM16 16h4v4h-4z"/></svg><input type="range" id="st-size" min="0" max="100" step="2" value="${siteSize()}" aria-label="${S.siteLayout === 'list' ? 'Row size' : 'Card size'}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3h8v8H3zM13 3h8v8h-8zM3 13h8v8H3zM13 13h8v8h-8z"/></svg></label>
     <div class="st-price" role="group" aria-label="Price">${[['', 'Any price'], ['free', 'Free'], ['paid', 'Paid']].map(([k, l]) => `<button type="button" data-siteprice="${k}" aria-pressed="${(price || '') === k}">${l}</button>`).join('')}</div></div>
     ${S.canWrite && pick && pick.startsWith('c-') ? '<button class="linkbtn" type="button" data-sitecat-del>Remove this category</button>' : ''}</div>`
-  const chips = `<nav class="st-cats" aria-label="Website categories"><button class="tab" type="button" data-sitecat="" data-siteall aria-pressed="${!pick && !favOnly && !S.siteArch}">All <span class="n">${favOnly || S.siteArch ? base.filter(r => !isArch(r) && priced(r) && terms.every(t => hay(r).includes(t))).length : all.length}</span></button><button class="tab st-fav" type="button" data-sitefav aria-pressed="${favOnly}">${STAR_IC}Favourites <span class="n">${favCount}</span></button>${shownCats.map(([k, l]) => `<button class="tab" type="button" data-sitecat="${esc(k)}" aria-pressed="${pick === k}">${esc(l)} <span class="n">${counts[k] || 0}</span></button>`).join('')}${archCount ? `<button class="tab st-arch" type="button" data-sitearch aria-pressed="${!!S.siteArch}">${ARCHIVE_IC}Archived <span class="n">${archCount}</span></button>` : ''}${S.canWrite ? '<button class="tab st-add" type="button" data-sitecat-add>+ Add</button>' : ''}</nav>`
+  const chips = `<nav class="st-cats" aria-label="Website categories"><button class="tab" type="button" data-sitecat="" data-siteall aria-pressed="${!pick && !favOnly && !S.siteArch}">All <span class="n">${favOnly || S.siteArch ? base.filter(r => !isArch(r) && priced(r) && terms.every(t => hay(r).includes(t))).length : all.length}</span></button><button class="tab st-fav" type="button" data-sitefav aria-pressed="${favOnly}">${STAR_IC}Favourites <span class="n">${favCount}</span></button>${shownCats.map(([k, l]) => `<button class="tab${favOnly && !counts[k] ? ' dim' : ''}" type="button" data-sitecat="${esc(k)}" aria-pressed="${pick === k}">${esc(l)} <span class="n">${counts[k] || 0}</span></button>`).join('')}${archCount ? `<button class="tab st-arch" type="button" data-sitearch aria-pressed="${!!S.siteArch}">${ARCHIVE_IC}Archived <span class="n">${archCount}</span></button>` : ''}${S.canWrite ? '<button class="tab st-add" type="button" data-sitecat-add>+ Add</button>' : ''}</nav>`
   const card = (r, i) => {
     const name = nameOf(r), about = siteAbout(r), pr = priceOf(r), fav = isFav(r)
     const star = S.canWrite ? `<button class="sc-star${fav ? ' on' : ''}" type="button" data-sitestar="${esc(r.id)}" aria-pressed="${fav}" aria-label="${fav ? 'Remove from favourites' : 'Add to favourites'}" title="${fav ? 'Remove from favourites' : 'Add to favourites'}">${STAR_IC}</button>` : ''
-    return `<article class="site sc${first ? ' enter' : ''}${r.lib ? ' lib' : ''}" data-id="${esc(r.id)}" data-url="${esc(r.url || '')}" style="--d:${Math.min(i, 20) * 30}ms">${isArch(r) ? '' : star}${S.canWrite ? MORE : ''}<div class="sc-top"><span class="sc-logo"><b class="sc-l">${esc((name[0] || '?').toUpperCase())}</b><img alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" src="${esc(siteLogo(r))}" onload="if(this.naturalWidth<32)this.remove()" onerror="this.remove()"></span><div class="sc-n"><b>${esc(name)}</b><span class="sc-sub"><i class="sc-dm">${esc(r.domain || siteHost(r))}</i>${pr ? `<em class="sc-pr ${pr}">${PRICE_LABEL[pr]}</em>` : ''}</span></div></div><p class="sc-d${about ? '' : ' none'}">${esc(about || 'This site doesn’t describe itself.')}</p></article>`
+    const arch = isArch(r), archBtn = S.canWrite ? `<button class="sc-arch${arch ? ' solo' : ''}" type="button" data-site-archive="${esc(r.url || '')}" data-name="${esc(name)}" aria-label="${arch ? 'Unarchive' : 'Archive'}" title="${arch ? 'Unarchive' : 'Archive'}">${arch ? UNARCH_IC : ARCH_IC}</button>` : ''
+    return `<article class="site sc${first ? ' enter' : ''}${r.lib ? ' lib' : ''}" data-id="${esc(r.id)}" data-url="${esc(r.url || '')}" style="--d:${Math.min(i, 20) * 30}ms">${arch ? '' : star}${archBtn}${S.canWrite ? MORE : ''}<div class="sc-top"><span class="sc-logo"><b class="sc-l">${esc((name[0] || '?').toUpperCase())}</b><img alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" src="${esc(siteLogo(r))}" onload="if(this.naturalWidth<32)this.remove()" onerror="this.remove()"></span><div class="sc-n"><b>${esc(name)}</b><span class="sc-sub"><i class="sc-dm">${esc(r.domain || siteHost(r))}</i>${pr ? `<em class="sc-pr ${pr}">${PRICE_LABEL[pr]}</em>` : ''}</span></div></div><p class="sc-d${about ? '' : ' none'}">${esc(about || 'This site doesn’t describe itself.')}</p></article>`
   }
   const empty = S.siteArch ? '<div class="st-empty"><b>Nothing archived</b></div>' : favOnly && !favCount ? '<div class="st-empty"><b>No favourites yet</b>Tap the star on any website to keep it here.</div>'
+    : favOnly && pick ? `<div class="st-empty"><b>No favourites in ${esc(siteCatLabel(pick))} yet</b>Star a website in this category to keep it here, or tap All to see everything.</div>`
     : `<div class="st-empty"><b>Nothing here${price ? ' at that price' : ''}</b>${pick && pick.startsWith('c-') ? 'Open a website’s ⋯ menu and choose Categories to put it here.' : 'Try other words, another category or another price.'}</div>`
   wrap.innerHTML = head + chips + (list.length ? list.map(card).join('') : empty)
   applySiteSize() // again now the slider exists, so its track shows the right fill
@@ -9508,11 +9585,14 @@ function openLibMenu(url, anchor) {
   menuFor = 'lib:' + url
   anchor.setAttribute('aria-expanded', 'true')
   const arch = archivedSet().has(libKey(url))
-  menu.innerHTML = `<a role="menuitem" href="${esc(url)}" target="_blank" rel="noopener noreferrer" data-act="open">Open ${esc(e[0])} ↗</a>${S.canWrite ? `<button type="button" role="menuitem" data-act="lib-arch">${arch ? 'Unarchive' : 'Archive'}</button>` : ''}`
+  menu.innerHTML = `<a role="menuitem" href="${esc(url)}" target="_blank" rel="noopener noreferrer" data-act="open">Open ${esc(e[0])} ↗</a>${S.canWrite ? `<button type="button" role="menuitem" data-act="lib-move">Move to category…</button><button type="button" role="menuitem" data-act="lib-arch">${arch ? 'Unarchive' : 'Archive'}</button>` : ''}`
   menu.hidden = false
-  const a = anchor.getBoundingClientRect(), m = menu.getBoundingClientRect()
-  placeAt(menu, Math.max(8, Math.min(innerWidth - m.width - 8, a.right - m.width)), a.bottom + 6 + m.height > innerHeight ? a.top - m.height - 6 : a.bottom + 6)
+  menuInView()
 }
+// archive, right on the card beside the star and ⋯ (Rohit, 27 Oct: most people want only a few resources, so decluttering is
+// one click; an archived site waits under Archived, and the toast can undo it)
+const ARCH_IC = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="4.5" rx="1.2" stroke="currentColor" stroke-width="1.7"/><path d="M5.5 9v8.5a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2V9M10 13h4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>'
+const UNARCH_IC = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="4.5" rx="1.2" stroke="currentColor" stroke-width="1.7"/><path d="M5.5 9v8.5a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2V9M12 17v-5.5M9.6 13.8 12 11.4l2.4 2.4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>'
 // favourites are a star (Rohit, 27 Oct: a star, and bigger, instead of the heart)
 const STAR_IC = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.2l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17.2l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>'
 // a site you saved is a favourite unless you unstarred it; a library site is a favourite once starred (starring saves it)
@@ -9688,6 +9768,8 @@ $('#st-wrap').addEventListener('input', e => {
 $('#st-wrap').addEventListener('click', async e => {
   const lay = e.target.closest('[data-sitelayout]')
   if (lay) { S.siteLayout = lay.dataset.sitelayout; lsSet('dailies.sitelayout', S.siteLayout); redrawSites(); return }
+  const ab = e.target.closest('[data-site-archive]') // a card's archive button ([data-sitearch] is the Archived chip)
+  if (ab) { e.stopPropagation(); if (S.canWrite) archiveSite(ab.dataset.siteArchive, ab.dataset.name || 'it', !archivedSet().has(libKey(ab.dataset.siteArchive))); return }
   if (e.target.closest('[data-sitearch]')) { S.siteArch = !S.siteArch; if (S.siteArch) { S.siteFav = false; lsSet('dailies.sitefav', false) } S.siteCat = null; redrawSites(); return }
   if (e.target.closest('[data-sitefav]')) S.siteArch = false
   if (e.target.closest('[data-sitefav]')) { S.siteFav = !S.siteFav; lsSet('dailies.sitefav', S.siteFav); redrawSites(); return }
