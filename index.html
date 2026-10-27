@@ -4758,7 +4758,7 @@ function impIgProgress(m) {
   const run = IMP.igRun
   if (!run) return
   const c = run.cols.find(x => x.url === m.url)
-  if (c) { c.total = m.total || c.total; c.added = m.added ?? c.added; if (m.done) c.done = true; if (m.blocked) c.error = 'Instagram asked Dailies to slow down.' }
+  if (c) { c.total = m.total || c.total; c.added = m.added ?? c.added; if (m.done) c.done = true; if (m.more) c.more = true; if (m.blocked) c.error = 'Instagram asked Dailies to slow down.' }
   impIgSoon()
 }
 function impIgResult(m) {
@@ -4783,11 +4783,11 @@ function renderIgProgress() {
     box.querySelector('[data-close-ig]').onclick = () => { closeTop(); if (added) { S.source = 'instagram'; S.board = null; S.via = null; render() } }
   }
   box.querySelector('h2').textContent = run.stopped ? 'Import stopped' : run.finished ? 'Your Instagram saves are in' : 'Reading your Instagram saves'
-  box.querySelector('.imp-lead').textContent = run.finished ? `${plural(n, 'save')} found, ${plural(added, 'new one')} added.` : 'Instagram is open in another tab, scrolling through your saves. Leave it there until this says it’s done.'
+  box.querySelector('.imp-lead').textContent = run.finished ? `${plural(n, 'save')} found, ${plural(added, 'new one')} added.${run.cols.some(c => c.more) ? ' These are your newest saves. Run Import again in a few hours and Dailies reads the rest, slowly, so your Instagram account stays safe.' : ''}` : 'Instagram is open in another tab, scrolling through your saves. Leave it there until this says it’s done.'
   box.querySelector('.imp-pausewrap').innerHTML = igPauseNote()
   box.querySelector('.imp-rows').innerHTML = run.cols.map(c => {
     const done = c.done || !!c.error
-    return `<div class="imp-row${c.done && !c.error ? ' done' : ''}"><span class="mini"${cssUrl(c.pics[0]) ? ` style="background-image:url('${cssUrl(c.pics[0])}')"` : ''}></span><div><b>${esc(c.name)}</b><div class="meter${done ? '' : ' imp-meter-wait'}"><i style="--p:${done ? 100 : 40}%"></i></div></div><span class="n">${c.error ? esc(c.error) : c.done ? `${CHECK_IC.replace('<svg', '<svg width="12" height="12" style="vertical-align:-1px;margin-right:4px"')}${plural(c.total, 'save')}` : `${c.total.toLocaleString()} found`}</span></div>`
+    return `<div class="imp-row${c.done && !c.error ? ' done' : ''}"><span class="mini"${cssUrl(c.pics[0]) ? ` style="background-image:url('${cssUrl(c.pics[0])}')"` : ''}></span><div><b>${esc(c.name)}</b><div class="meter${done ? '' : ' imp-meter-wait'}"><i style="--p:${done ? 100 : 40}%"></i></div></div><span class="n">${c.error ? esc(c.error) : c.done ? `${CHECK_IC.replace('<svg', '<svg width="12" height="12" style="vertical-align:-1px;margin-right:4px"')}${c.more ? `Newest ${plural(c.total, 'save')}` : plural(c.total, 'save')}` : `${c.total.toLocaleString()} found`}</span></div>`
   }).join('')
   box.querySelector('.imp-foot span').textContent = run.finished ? '' : plural(n, 'save') + ' found so far'
 }
@@ -6618,6 +6618,7 @@ function openDetail(id, list = null) {
   if (isNew(byId(id) || {})) { S.openedNow.add(id); render() }
   noteOpened(id)
   fillDetail(byId(id))
+  wantIg(byId(id)) // its caption, slides and reel preview, now that you're looking at it
   openOverlay($('#detail'), () => { flushNote(); S.detail = null; S.detailList = null; $('#d-stage').querySelector('video')?.pause(); $('#d-stage').querySelector('iframe')?.remove() /* a YouTube / Vimeo player stops when the big view closes */ })
 }
 // an Instagram post you open: look once for its other pictures (one Instagram request, paced and capped like every other)
@@ -6783,6 +6784,7 @@ function step(d) {
   S.detail = next.id
   noteOpened(next.id)
   fillDetail(next)
+  wantIg(next)
   const st = $('#d-stage'); st.classList.remove('swap'); void st.offsetWidth; st.classList.add('swap')
 }
 $('#d-prev').onclick = () => step(-1)
@@ -7389,6 +7391,10 @@ function openInbox() {
 // Claude pages can't fetch Instagram, X or YouTube, but the Chrome extension can: hand it the
 // references still missing a preview and store what it sends back.
 const PREVIEWABLE = ['instagram', 'twitter', 'youtube', 'pinterest', 'tiktok', 'vimeo']
+// Instagram posts that came in with a picture get their caption, slides and reel preview only once you open them: each one
+// is a request on your Instagram account, and hundreds after an import is what gets accounts flagged (Rohit, 27 Oct)
+const igWanted = r => !!(S.igWant && S.igWant.has(r.id))
+function wantIg(r) { if (!r || (r.source !== 'instagram' && r.via !== 'instagram') || igWanted(r)) return; (S.igWant ||= new Set()).add(r.id); if (S.asked) S.asked.delete(r.id); requestPreviews() }
 // your tags, most used first: the tag rules snap new spellings onto them, Claude picks from them,
 // and the Chrome extension uses them to suggest tags while you save
 function tagCounts() { const c = {}; for (const r of S.refs) for (const t of r.tags || []) c[t] = (c[t] || 0) + 1; return c }
@@ -7430,7 +7436,7 @@ function requestPreviews() {
   if (!S.inboxOpen || !S.canWrite) return
   measureScreen()
   S.asked = S.asked || new Set()
-  const items = S.refs.filter(r => r.url && !S.asked.has(r.id) && ((r.preview === 'pending' && !r.image && (window.DAILIES_DESKTOP || PREVIEWABLE.includes(r.source) || (siteReady() && !window.DAILIES_WEB && !['note', 'upload'].includes(r.source)))) || ((r.source === 'pinterest' || r.source === 'twitter') && (!r.media || (VIDEO_PREVIEWS && r.media !== 'image' && !r.video && !r.gif && needFrames(r)))) || (slidesReady() && (r.source === 'pinterest' || r.source === 'twitter') && !r.sl && r.kind !== 'note') || (pkReady() && r.source === 'pinterest' && !r.pk && /\/pin\/\d+/.test(r.url || '')) || (r.source === 'youtube' && (needFrames(r) || wideShort(r))) || (r.source === 'instagram' && needFrames(r) && !!r.image) || (r.via === 'instagram' && r.image && !r.caption && !r.title) || (VIDEO_PREVIEWS && window.DAILIES_DESKTOP && r.vidWant && !r.video)))
+  const items = S.refs.filter(r => r.url && !S.asked.has(r.id) && ((r.preview === 'pending' && !r.image && (window.DAILIES_DESKTOP || PREVIEWABLE.includes(r.source) || (siteReady() && !window.DAILIES_WEB && !['note', 'upload'].includes(r.source)))) || ((r.source === 'pinterest' || r.source === 'twitter') && (!r.media || (VIDEO_PREVIEWS && r.media !== 'image' && !r.video && !r.gif && needFrames(r)))) || (slidesReady() && (r.source === 'pinterest' || r.source === 'twitter') && !r.sl && r.kind !== 'note') || (pkReady() && r.source === 'pinterest' && !r.pk && /\/pin\/\d+/.test(r.url || '')) || (r.source === 'youtube' && (needFrames(r) || wideShort(r))) || (r.source === 'instagram' && needFrames(r) && !!r.image && igWanted(r)) || (r.via === 'instagram' && r.image && !r.caption && !r.title && igWanted(r)) || (VIDEO_PREVIEWS && window.DAILIES_DESKTOP && r.vidWant && !r.video)))
     // what you can see first, then the cards just below, then the rest: previews seem to be there already as you scroll
     .map((r, i) => [r, onScreenRank(r.id, i)]).sort((a, b) => a[1] - b[1]).map(x => x[0])
     .filter(r => r.source !== 'instagram' || document.visibilityState === 'visible') // Instagram only while you're looking (fewer automatic requests on your account)
