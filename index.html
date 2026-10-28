@@ -5487,7 +5487,7 @@ function renderBoards() {
   sec.classList.toggle('still', !fresh) // cards only fade in when the row first opens, not when you pick a board
   $('#boards-row').innerHTML = names.map((b, i) => {
     const p = pics(b)
-    return `<div class="collbox" style="--i:${Math.min(i, 9)}"><button class="coll" type="button" data-board="${esc(b)}" aria-pressed="${S.board === b}"><span class="trio">${[0, 1, 2].map(i => p[i] ? `<img alt="" decoding="async" src="${esc(wallSrc(p[i]))}"${focusAttr(p[i])}>` : '<i></i>').join('')}</span><b>${esc(b)}</b><small>${by[b].length} references</small></button>${S.canWrite ? `<button class="collmore more" type="button" data-boardmore="${esc(b)}" aria-label="Board options" aria-haspopup="menu"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg></button>` : ''}</div>`
+    return `<div class="collbox" style="--i:${Math.min(i, 9)}"><button class="coll" type="button" data-board="${esc(b)}" aria-pressed="${S.board === b}">${trioHtml(p)}<b>${esc(b)}</b><small>${by[b].length} references</small></button>${S.canWrite ? `<button class="collmore more" type="button" data-boardmore="${esc(b)}" aria-label="Board options" aria-haspopup="menu"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg></button>` : ''}</div>`
   }).join('')
   requestAnimationFrame(boardsNav)
 }
@@ -5522,7 +5522,7 @@ function renderShelf() {
   shelf.dataset.sig = sig
   $('#shelf-row').innerHTML = tags.map(t => {
     const p = pics(t)
-    return `<button class="coll" type="button" data-tag="${esc(t)}"><span class="trio">${[0, 1, 2].map(i => p[i] ? `<img alt="" decoding="async" src="${esc(wallSrc(p[i]))}"${focusAttr(p[i])}>` : '<i></i>').join('')}</span><b>#${esc(t)}</b><small>${by[t].length} references</small></button>`
+    return `<button class="coll" type="button" data-tag="${esc(t)}">${trioHtml(p)}<b>#${esc(t)}</b><small>${by[t].length} references</small></button>`
   }).join('')
   requestAnimationFrame(shelfNav)
 }
@@ -5978,6 +5978,12 @@ document.addEventListener('mousedown', e => { if (!$('#spanel').hidden && !e.tar
 $('#sp-colors').addEventListener('click', e => { const b = e.target.closest('[data-color]'); if (!b) return; S.color = S.color === b.dataset.color ? null : b.dataset.color; render(); renderSearchPanel() })
 $('#sp-try').addEventListener('click', e => { const b = e.target.closest('[data-k]'); if (!b) return; $('#q').value = b.dataset.k; S.q = b.dataset.k; S.smart = null; render(); $('#spanel').hidden = true })
 
+// a collection card's pictures: up to three side by side, filling the card however many there are (an empty slot used to
+// leave a dark block inside the selected outline; Rohit, 28 Oct)
+function trioHtml(p) {
+  const pics = p.filter(Boolean).slice(0, 3)
+  return `<span class="trio" style="grid-template-columns:repeat(${Math.max(1, pics.length)}, 1fr)">${pics.length ? pics.map(r => `<img alt="" decoding="async" src="${esc(wallSrc(r))}"${focusAttr(r)}>`).join('') : '<i></i>'}</span>`
+}
 // masonry: each card goes into the currently shortest column
 const cache = new Map()
 const LOADED = new Set() // picture addresses that have already been shown, so a rebuilt card doesn't fade them in a second time
