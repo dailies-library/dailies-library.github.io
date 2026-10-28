@@ -20,11 +20,12 @@ self.addEventListener('message', e => {
   const m = e.data
   if (m && m.type === 'dailies:claim') { e.waitUntil(self.clients.claim()); return } // a page that loaded without this worker (a hard reload)
   if (!m || m.type !== 'dailies:token') return
-  const was = token
   token = m.token || null
   for (const f of waiting) f(token)
   waiting = []
-  if (was && !token) e.waitUntil(caches.delete(CACHE)) // signed out: this browser forgets the pictures too
+  // signed out: this browser forgets the pictures too. Only on a real sign-out: a moment without a token (a refresh, a second
+  // tab) used to wipe every kept picture, and the whole wall then downloaded again and filled in unevenly (27 Oct)
+  if (m.signedOut && !token) e.waitUntil(caches.delete(CACHE))
 })
 async function askToken(fresh) {
   if (token && !fresh) return token

@@ -25,9 +25,10 @@
 
   // pictures and videos are private: sw.js fetches them with the signed-in person's token, which it gets from here
   // (on sign-in and every refresh, and again when it asks after being restarted); signing out clears it
-  const tellWorker = session => {
+  // signedOut: only a real sign-out makes the worker forget the pictures kept on this device (not a refresh hiccup or a second tab)
+  const tellWorker = (session, signedOut = false) => {
     if (!('serviceWorker' in navigator)) return
-    const m = { type: 'dailies:token', token: session ? session.access_token : null }
+    const m = { type: 'dailies:token', token: session ? session.access_token : null, signedOut }
     if (navigator.serviceWorker.controller) navigator.serviceWorker.controller.postMessage(m)
     navigator.serviceWorker.ready.then(r => r.active && r.active !== navigator.serviceWorker.controller && r.active.postMessage(m)).catch(() => {})
   }
@@ -40,7 +41,7 @@
   const signedIn = new Promise(resolve => {
     const done = session => { uid = session.user.id; W.email = session.user.email || ''; hideGate(); setTimeout(resolve, 0) } // the library loads outside the auth callback
     sb.auth.getSession().then(({ data }) => { tellWorker(data.session); if (data.session) done(data.session); else showGate() })
-    sb.auth.onAuthStateChange((event, session) => { tellWorker(session); if (session && !uid) done(session); if (event === 'SIGNED_OUT') W.forgetCopy().then(() => location.reload()) })
+    sb.auth.onAuthStateChange((event, session) => { tellWorker(session, event === 'SIGNED_OUT'); if (session && !uid) done(session); if (event === 'SIGNED_OUT') W.forgetCopy().then(() => location.reload()) })
   })
   W.signOut = () => sb.auth.signOut()
   // the link-preview server function (supabase/functions/preview): the page sends the signed-in user's token with it
