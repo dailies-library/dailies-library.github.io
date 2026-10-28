@@ -440,10 +440,24 @@
     manage: async () => {},
   }
 
+  // Slack: the page's Slack code (14-slack.js) talks to the server function, which holds the Slack key and answers in the
+  // shapes of Claude's Slack connector; you can only reach channels you're in (Rohit, 28 Oct: pick a channel, save from it)
+  const SLACK_READY = false // on once the slack function is deployed with its SLACK_BOT_TOKEN; until then Settings has no Slack section
+  const mcp = SLACK_READY && {
+    callTool: async (_server, tool, input) => {
+      const token = await W.token()
+      const r = await fetch(SUPA_URL + '/functions/v1/slack', { method: 'POST', headers: { authorization: 'Bearer ' + token, apikey: SUPA_KEY, 'content-type': 'application/json' }, body: JSON.stringify({ tool, input }), signal: AbortSignal.timeout(60000) })
+      const j = await r.json().catch(() => null)
+      if (r.status === 404) { const e = new Error('Slack isn’t set up for Dailies yet'); e.code = 'not_set_up'; throw e }
+      if (!j || j.code || !r.ok) { const e = new Error((j && j.error) || 'Slack didn’t answer'); e.code = (j && j.code) || 'server_unavailable'; throw e }
+      return j
+    },
+  }
+
   window.claude = {
     use: async name => {
       await ready
-      return ({ db, assets, downloads, user, permissions })[name] || null // AI, Slack, rooms and comments aren't on the web version yet
+      return ({ db, assets, downloads, user, permissions, mcp })[name] || null // AI, rooms and comments aren't on the web version yet
     },
   }
 
@@ -563,7 +577,6 @@
   --poster-a: #17171d; --poster-b: #0e0e0e;
   --display: 'General Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
   --ui: 'General Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --tagface: 'Instrument Serif', Georgia, 'Times New Roman', serif;
   --mono: 'General Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
   --gap: 24px; --radius: 16px;
   color-scheme: dark;
@@ -773,7 +786,6 @@ body.canvas-mode .tagdrawer, body.notes-mode .tagdrawer { display: none; }
 .tab.crtab { color: var(--text); }
 .tdbreak { flex-basis: 100%; height: 0; } /* Creators start on a line of their own */
 .tdlabel { align-self: center; padding: 0 4px 0 2px; font-size: 12px; color: var(--faint); white-space: nowrap; }
-.tab.tagtab .tn { font: italic 700 1.36em/1 var(--tagface); letter-spacing: .005em; }
 .tab.tagtab[aria-pressed="true"] i { color: inherit; opacity: .5; }
 .tabtail { display: none; } /* (phones show it, see below) */
 .tabs .div { flex: none; width: 1px; margin: 8px 6px; background: var(--line-2); }
@@ -846,7 +858,6 @@ main { padding: 32px 40px 96px; }
 @keyframes collin { from { opacity: 0; transform: translateY(10px); } }
 @media (prefers-reduced-motion: reduce) { .boardshelf, .boardshelf .coll { transition: none; animation: none; } }
 .boardshelf .coll b { text-transform: capitalize; }
-.coll[data-tag] b { font: italic 700 18px/1.1 var(--tagface); letter-spacing: .005em; }
 .coll[aria-pressed="true"] .trio { outline: 2px solid var(--text); outline-offset: 3px; }
 .coll[aria-pressed="true"] b { color: var(--text); }
 .boardshelf.picked .coll:not([aria-pressed="true"]) .trio { opacity: .55; }
@@ -1642,8 +1653,8 @@ body.canvas-mode .fab { display: none !important; }
 .taghead { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 28px; margin: 0 0 32px; padding: 30px 34px; border-radius: 24px; background: linear-gradient(135deg, var(--surface-2), var(--surface) 70%); border: 1px solid var(--line); overflow: hidden; animation: unfold .35s cubic-bezier(.2,.8,.2,1); }
 .th-text { min-width: 0; flex: 1; }
 .th-kicker { margin: 0 0 6px; font: 500 13px var(--ui); color: var(--muted); }
-/* hashtag names (this title, the chips, the shelf) in bold italic Instrument Serif, the user's pick (27 Oct); the font has one weight, so the browser thickens it */
-.th-title { margin: 0; font: italic 700 clamp(46px, 5.6vw, 76px)/1 var(--tagface); letter-spacing: -.005em; color: var(--text); outline: none; overflow-wrap: anywhere; border-radius: 8px; }
+/* hashtag names stay in General Sans like everything else (Rohit, 28 Oct: "keep them same font, don't use instrument serif") */
+.th-title { margin: 0; font: 500 clamp(30px, 4vw, 52px)/1.05 var(--display); letter-spacing: -.02em; color: var(--text); outline: none; overflow-wrap: anywhere; border-radius: 8px; }
 .th-sub { margin: 10px 0 0; max-width: 640px; font-size: 16px; line-height: 1.5; color: var(--muted); outline: none; border-radius: 6px; min-height: 1.5em; }
 .th-sub:empty::before { content: attr(data-ph); color: var(--faint); }
 .taghead.ro .th-sub:empty { display: none; }
@@ -7956,6 +7967,7 @@ function syncMessage(e) {
   if (c === 'blocked_by_policy' || c === 'approval_required') return 'Your organization blocks this Slack action'
   if (c === 'server_unavailable' || c === 'upstream_error') return 'Slack didn’t answer. Trying again in a few minutes'
   if (c === 'tool_error') return 'Slack said: ' + (e.message || 'error')
+  if (c === 'not_set_up' || c === 'no_slack_user' || c === 'not_member') return e.message // the website's Slack function (supabase/functions/slack)
   return 'Couldn’t sync' + (e && e.message ? ': ' + e.message : '')
 }
 
@@ -8065,12 +8077,12 @@ function renderSettings() {
   const tp = themePref()
   const look = `<div class="look"><b>Appearance</b><div class="seg" role="group" aria-label="Appearance">${[['dark', 'Dark'], ['light', 'Light'], ['auto', 'Auto']].map(([k, l]) => `<button type="button" data-theme-set="${k}" aria-pressed="${tp === k}">${l}</button>`).join('')}</div></div>`
   body.innerHTML = look + (window.DAILIES_DESKTOP ? macSettings(sec, waiting, noun) :
-    (window.DAILIES_WEB && !set.channelId ? '' : sec('slack', glyph('slack'), 'Slack', set.channelId ? (S.syncError ? 'bad' : '') : 'off', slackSum, `
-      ${set.channelId ? `<p class="sline">Posts in <b>#${esc(set.channelName)}</b> are saved here while Dailies is open. A short message after a link becomes its note, #words become tags, and thread replies are added.</p>` : '<p class="sline">Pick the Slack channel you share references to.</p>'}
+    (window.DAILIES_WEB && !S.mcp ? '' : sec('slack', glyph('slack'), 'Slack', set.channelId ? (S.syncError ? 'bad' : '') : 'off', slackSum, `
+      ${set.channelId ? `<p class="sline">Posts in <b>#${esc(set.channelName)}</b> are saved here while Dailies is open. A short message after a link becomes its note, #words become tags, and thread replies are added.</p>` : '<p class="sline">Pick a Slack channel you’re in. Links, pictures and notes posted there are saved to your library.</p>'}
       ${S.syncError ? `<p class="sline bad">${esc(S.syncError)}</p>` : ''}
       ${S.owner && S.mcp ? `
         <label class="swrow"><span>React ✅ on messages once they’re saved</span><input type="checkbox" class="swc" id="set-react" ${set.react !== false ? 'checked' : ''}></label>
-        <div class="ss-actions"><button class="btn" id="set-sync" type="button">Sync now</button><button class="btn" id="set-channels" type="button">${set.channelId ? 'Change channel' : 'Choose channel'}</button></div>
+        <div class="ss-actions">${set.channelId ? '<button class="btn" id="set-sync" type="button">Sync now</button>' : ''}<button class="btn" id="set-channels" type="button">${set.channelId ? 'Change channel' : 'Choose channel'}</button></div>
         <div id="channel-list"></div>` : '<p class="sline">Syncing runs when the owner opens Dailies in Claude with the Slack connector on.</p>'}`)) +
     sec('pin', glyph('pinterest', true), 'Pinterest', pinDot, !boards.length ? 'None followed' : pinDot === 'warn' ? 'Waiting for Chrome' : noun(boards.length, 'board'), `
       <p class="sline">New pins on these boards are added while Dailies is open in Chrome with the extension. Public boards only.</p>
@@ -8176,7 +8188,7 @@ function renderSettings() {
 // ---- Dailies on the web: account and bringing a library in (Pinterest and Instagram work through the extension as on claude.ai)
 function webSettings(body, sec, noun) {
   const W = window.DAILIES_WEB_API || {}
-  body.querySelectorAll('[data-ss="slack"], [data-ss="thumbs"], [data-ss="data"]').forEach(el => el.remove())
+  body.querySelectorAll('[data-ss="thumbs"], [data-ss="data"]').forEach(el => el.remove()) // Slack stays: it works here through the server function
   body.insertAdjacentHTML('afterbegin', sec('account', glyph('note'), 'Account', '', esc(W.email || 'Signed in'), `
       <p class="sline">Signed in as <b>${esc(W.email || '')}</b>. Your library is private: only you can see it.</p>
       <div class="ss-actions"><button class="btn" id="web-signout" type="button">Sign out</button></div>`))
