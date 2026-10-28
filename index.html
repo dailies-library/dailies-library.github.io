@@ -4770,7 +4770,10 @@ async function importYtList() {
   for (const v of l.videos) {
     if (run.stopped) break
     try {
-      const r = await saveRef({ url: 'https://www.youtube.com/watch?v=' + v.id, tags: [tag], auto: true, extra: { title: v.title.slice(0, 300), author: v.author.slice(0, 200) } })
+      // filed under the playlist too, so YouTube gets a "Your playlists" row like Pinterest boards (Rohit, 28 Oct)
+      const board = String(l.title || '').trim().slice(0, 80) || null
+      const r = await saveRef({ url: 'https://www.youtube.com/watch?v=' + v.id, tags: [tag], auto: true, extra: { title: v.title.slice(0, 300), author: v.author.slice(0, 200), ...(board ? { board } : {}) } })
+      if (r.dup && board && r.id) { const d = byId(r.id); if (d && !d.board && d.source === 'youtube') await patch(r.id, { board }) } // brought in before: now it has its playlist
       r.dup ? run.had++ : run.done++
     } catch { run.failed++ }
     if ((run.done + run.had + run.failed) % 3 === 0) impYtSoon()
@@ -5477,7 +5480,7 @@ function renderBoards() {
   sec.classList.toggle('open', names.length > 0) // never hidden: it folds shut with its content still in place
   if (!names.length) { sec.dataset.sig = ''; S.boardLead = 0; return }
   sec.classList.toggle('picked', !!S.board)
-  $('#boards-h').textContent = k === 'instagram' ? 'Your collections' : `Your ${info(k).label} boards`
+  $('#boards-h').textContent = k === 'instagram' ? 'Your collections' : k === 'youtube' ? 'Your playlists' : `Your ${info(k).label} boards`
   const pics = b => by[b].filter(r => r.image).slice(0, 3)
   const sig = k + '|' + S.board + '|' + names.map(b => b + ':' + by[b].length + ':' + pics(b).map(r => r.image).join()).join('|')
   if (sig === sec.dataset.sig) { S.boardLead = 0; return }
@@ -5487,7 +5490,7 @@ function renderBoards() {
   sec.classList.toggle('still', !fresh) // cards only fade in when the row first opens, not when you pick a board
   $('#boards-row').innerHTML = names.map((b, i) => {
     const p = pics(b)
-    return `<div class="collbox" style="--i:${Math.min(i, 9)}"><button class="coll" type="button" data-board="${esc(b)}" aria-pressed="${S.board === b}">${trioHtml(p)}<b>${esc(b)}</b><small>${by[b].length} references</small></button>${S.canWrite ? `<button class="collmore more" type="button" data-boardmore="${esc(b)}" aria-label="Board options" aria-haspopup="menu"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg></button>` : ''}</div>`
+    return `<div class="collbox" style="--i:${Math.min(i, 9)}"><button class="coll" type="button" data-board="${esc(b)}" aria-pressed="${S.board === b}">${trioHtml(p)}<b>${esc(b)}</b><small>${by[b].length} reference${by[b].length === 1 ? '' : 's'}</small></button>${S.canWrite ? `<button class="collmore more" type="button" data-boardmore="${esc(b)}" aria-label="Board options" aria-haspopup="menu"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg></button>` : ''}</div>`
   }).join('')
   requestAnimationFrame(boardsNav)
 }
@@ -5522,7 +5525,7 @@ function renderShelf() {
   shelf.dataset.sig = sig
   $('#shelf-row').innerHTML = tags.map(t => {
     const p = pics(t)
-    return `<button class="coll" type="button" data-tag="${esc(t)}">${trioHtml(p)}<b>#${esc(t)}</b><small>${by[t].length} references</small></button>`
+    return `<button class="coll" type="button" data-tag="${esc(t)}">${trioHtml(p)}<b>#${esc(t)}</b><small>${by[t].length} reference${by[t].length === 1 ? '' : 's'}</small></button>`
   }).join('')
   requestAnimationFrame(shelfNav)
 }
@@ -6473,10 +6476,10 @@ function openBoardMenu(name, anchor) {
   closeMenu()
   menuFor = 'board:' + name
   anchor.setAttribute('aria-expanded', 'true')
-  const f = boardFollows(name), followed = f.list.some(f.match), n = boardRefs(name).length, what = S.source === 'instagram' ? 'collection' : 'board'
-  const can = !followed && S.source !== 'instagram' && (knownBoard(name) || pinUser()) // the username on record finds the board's address when its pins don't carry one
+  const f = boardFollows(name), followed = f.list.some(f.match), n = boardRefs(name).length, what = S.source === 'instagram' ? 'collection' : S.source === 'youtube' ? 'playlist' : 'board'
+  const can = !followed && S.source === 'pinterest' && (knownBoard(name) || pinUser()) // the username on record finds the board's address when its pins don't carry one
   menu.innerHTML = `${followed ? `<button type="button" role="menuitem" data-act="unfollow-board">Stop following this ${what}</button>` : can ? '<button type="button" role="menuitem" data-act="follow-board">Follow this board · new pins arrive by themselves</button>' : ''}
-    <button type="button" role="menuitem" class="danger" data-act="delete-board">Delete ${what} and its ${n} ${S.source === 'instagram' ? 'post' : 'pin'}${n === 1 ? '' : 's'}</button>`
+    <button type="button" role="menuitem" class="danger" data-act="delete-board">Delete ${what} and its ${n} ${S.source === 'instagram' ? 'post' : S.source === 'youtube' ? 'video' : 'pin'}${n === 1 ? '' : 's'}</button>`
   menu.hidden = false
   const a = anchor.getBoundingClientRect(), m = menu.getBoundingClientRect()
   placeAt(menu, Math.max(8, Math.min(innerWidth - m.width - 8, a.right - m.width)), a.bottom + 6 + m.height > innerHeight ? a.top - m.height - 6 : a.bottom + 6)
@@ -6585,7 +6588,7 @@ $('#cardmenu').addEventListener('click', async e => {
     return
   }
   if (menuFor.startsWith('board:')) {
-    const name = menuFor.slice(6), act = item.dataset.act, what = S.source === 'instagram' ? 'collection' : 'board'
+    const name = menuFor.slice(6), act = item.dataset.act, what = S.source === 'instagram' ? 'collection' : S.source === 'youtube' ? 'playlist' : 'board'
     closeMenu()
     if (act === 'unfollow-board') { await unfollowBoard(name); toast(`Stopped following “${name}”. Its pins stay in your library.`) }
     if (act === 'follow-board') {
@@ -6596,7 +6599,7 @@ $('#cardmenu').addEventListener('click', async e => {
     }
     if (act === 'delete-board') {
       const refs = boardRefs(name)
-      if (!(await askConfirm({ title: `Delete the ${what} “${name}”?`, body: `Its ${refs.length} ${S.source === 'instagram' ? 'post' : 'pin'}${refs.length === 1 ? '' : 's'} leave your library, and Dailies stops following the ${what}, so they won’t come back.` }))) return
+      if (!(await askConfirm({ title: `Delete the ${what} “${name}”?`, body: S.source === 'youtube' ? `Its ${refs.length} video${refs.length === 1 ? '' : 's'} leave your library.` : `Its ${refs.length} ${S.source === 'instagram' ? 'post' : 'pin'}${refs.length === 1 ? '' : 's'} leave your library, and Dailies stops following the ${what}, so they won’t come back.` }))) return
       if (S.board === name) S.board = null
       const gone = deleteRefsBulk(refs) // off the wall at once; its toast has Undo
       await unfollowBoard(name)
