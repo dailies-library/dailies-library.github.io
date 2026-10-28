@@ -7742,6 +7742,8 @@ async function refreshAll() {
   if (S.refreshing) return
   // a refresh starts from a clear view: the Categories row and an open hashtag or creator close (Rohit, 27 Oct)
   if (S.hashOpen || S.tag || S.creator) { S.hashOpen = false; S.tag = null; S.creator = null; render() }
+  // ...and what was new counts as seen: the NEW badges and the New tab go (Rohit, 28 Oct)
+  if (S.since || S.newOnly) { markSeen(); S.since = null; S.newOnly = false; render() }
   S.refreshing = true; renderSync()
   const before = S.refs.length
   try {
