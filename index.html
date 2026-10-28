@@ -650,7 +650,9 @@ kbd.k { font: 500 11px var(--mono); min-width: 20px; height: 20px; padding: 0 5p
 .tool:hover, .tool[aria-expanded="true"] { background: var(--surface-3); color: var(--text); }
 .tool[aria-pressed="true"], .tool[aria-pressed="true"]:hover { background: var(--text); color: var(--bg); } /* shuffled */
 body.canvas-mode #shuffle-btn, body.canvas-mode #export-btn, body.canvas-mode #refresh-btn { display: none; }
-.row2 #refresh-btn { flex: none; margin-right: -12px; } /* on the filter row, close beside All types (placeTypeSlot moves it there) */
+.row2 #refresh-btn { flex: none; margin-right: -12px; }
+.row2 #shuffle-btn { display: grid !important; flex: none; order: 0; margin-right: -14px; } /* just left of Refresh, as a pair (Rohit, 28 Oct) */
+@media (min-width: 761px) { .tabs [data-shuffle] { display: none !important; } } /* (the one in the tabs is gone on a computer) */ /* on the filter row, close beside All types (placeTypeSlot moves it there) */
 #export-btn, #bg-btn, #shuffle-btn { display: none !important; } /* the moodboard is in Settings, the background beside Labels, Shuffle in the tab row */
 @media (min-width: 761px) and (max-width: 1699px) { #shuffle-btn { display: grid !important; order: -2; } .tab.intabs[data-shuffle] { display: none; } } /* there is no room for it at the end of the tab row: it sits beside the search bar instead (the search bar is long enough to give it up) */
 .tool svg { width: 17px; height: 17px; transition: transform .3s ease; }
@@ -4785,9 +4787,11 @@ async function importYtList() {
   for (const v of l.videos) {
     if (run.stopped) break
     try {
+      // not auto: you asked for this playlist, so videos you once deleted come back too (they were skipped and counted as
+      // "already here": 100 of Rohit's 133 on 28 Oct)
       // filed under the playlist too, so YouTube gets a "Your playlists" row like Pinterest boards (Rohit, 28 Oct)
       const board = String(l.title || '').trim().slice(0, 80) || null
-      const r = await saveRef({ url: 'https://www.youtube.com/watch?v=' + v.id, tags: [tag], auto: true, extra: { title: v.title.slice(0, 300), author: v.author.slice(0, 200), ...(board ? { board } : {}) } })
+      const r = await saveRef({ url: 'https://www.youtube.com/watch?v=' + v.id, tags: [tag], extra: { title: v.title.slice(0, 300), author: v.author.slice(0, 200), ...(board ? { board } : {}) } })
       if (r.dup && board && r.id) { const d = byId(r.id); if (d && !d.board && d.source === 'youtube') await patch(r.id, { board }) } // brought in before: now it has its playlist
       r.dup ? run.had++ : run.done++
     } catch { run.failed++ }
@@ -7390,8 +7394,9 @@ function placeTypeSlot() {
   const t = $('#typeslot'); if (!t) return
   if (t.nextElementSibling !== $('#kinds')) $('.row2').insertBefore(t, $('#kinds'))
   const r = $('#refresh-btn'), tools = $('.topactions .tools')
-  if (mqPhone.matches) { if (r.parentElement !== tools) tools.prepend(r) }
-  else if (r.nextElementSibling !== t) $('.row2').insertBefore(r, t)
+  const sh = $('#shuffle-btn') // Shuffle sits just left of Refresh (Rohit, 28 Oct)
+  if (mqPhone.matches) { if (r.parentElement !== tools) tools.prepend(r); if (sh.parentElement !== tools) tools.append(sh) }
+  else { if (r.nextElementSibling !== t) $('.row2').insertBefore(r, t); if (sh.nextElementSibling !== r) $('.row2').insertBefore(sh, r) }
 }
 const setSearchHint = () => { $('#q').placeholder = mqPhone.matches ? 'Search…' : 'Search anything: “orange glow”, “kinetic type”, a creator…' }
 mqPhone.addEventListener('change', () => { placeTypeSlot(); setSearchHint() }); placeTypeSlot(); setSearchHint()
