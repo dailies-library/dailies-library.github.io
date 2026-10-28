@@ -5652,7 +5652,7 @@ function render() {
   // order: newest first (as stored), oldest first, or a shuffle that stays put until you shuffle again
   if (!S.smart && !S.similar) {
     if (S.sort === 'old') S.filtered.reverse()
-    else if (S.sort === 'shuffle') { const k = new Map(S.filtered.map(r => [r.id, shuffleKey(r.id)])); S.filtered.sort((a, b) => k.get(a.id) - k.get(b.id)) }
+    else if (S.sort === 'shuffle') S.filtered = mixed(S.filtered)
     else if (S.sort === 'color') S.filtered.sort((a, b) => hueKey(a) - hueKey(b))
     else if (S.sort !== 'new') sortBy(S.sort)
   }
@@ -5976,13 +5976,27 @@ $('#gb-bg').onclick = e => { e.stopPropagation(); toggleBgPop() }
 $('#gb-sort').onclick = () => { if (S.filtered[0]) openDetail(S.filtered[0].id) }
 $('#gb-dups').onclick = openDupes
 syncGridbar()
+// a shuffle that spreads every platform evenly down the wall: each platform's cards are shuffled among themselves, then
+// woven together (with a little randomness), so a big import from one place never bunches up (Rohit, 28 Oct: "the main All tab should be a mix of every platform")
+function mixed(list) {
+  const by = new Map()
+  for (const r of list) { const k = r.source || 'web'; by.has(k) ? by.get(k).push(r) : by.set(k, [r]) }
+  const pos = new Map()
+  for (const group of by.values()) {
+    group.sort((a, b) => shuffleKey(a.id) - shuffleKey(b.id))
+    group.forEach((r, i) => pos.set(r.id, (i + (shuffleKey(r.id + '~') % 1000) / 1000) / Math.sqrt(group.length))) // (÷√n: a smaller platform gets a fairer share of the first screens)
+  }
+  return list.slice().sort((a, b) => pos.get(a.id) - pos.get(b.id))
+}
 function shuffleKey(id) { // a stable random number per item for the current shuffle
   let h = 2166136261 ^ S.seed
   for (let i = 0; i < id.length; i++) { h ^= id.charCodeAt(i); h = Math.imul(h, 16777619) }
   h ^= h >>> 15; h = Math.imul(h, 2246822507); h ^= h >>> 13
   return h >>> 0
 }
-try { const o = JSON.parse(localStorage.getItem('dailies:order')); if (o && SORT_LABEL[o.sort]) { S.sort = o.sort; S.seed = o.seed | 0 } } catch { /* no storage */ }
+// the wall opens as a mix (a new one each visit) unless you picked another order, which is remembered (Rohit, 28 Oct)
+S.sort = 'shuffle'; S.seed = (Math.random() * 2 ** 31) | 0
+try { const o = JSON.parse(localStorage.getItem('dailies:order')); if (o && SORT_LABEL[o.sort] && o.sort !== 'shuffle') S.sort = o.sort } catch { /* no storage */ }
 // the shuffle button beside search: shuffles, and each further click shuffles again
 $('#shuffle-btn').onclick = () => setSort('shuffle')
 $('#export-btn').onclick = e => { e.stopPropagation(); openFilterMenu($('#export-btn')) }
