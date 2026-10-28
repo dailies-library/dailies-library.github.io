@@ -6386,6 +6386,35 @@ $('main').addEventListener('click', e => {
   clearSel()
 })
 
+// dragged out of Dailies (into Claude, ChatGPT, Figma, a folder…): each card arrives as its thumbnail picture plus its link,
+// so a chat model can see and read it (Rohit, 28 Oct). The picture has to be in hand when the drag starts, so it's fetched
+// (from this browser's copy) as the pointer comes over a card
+const DRAGPIC = new Map() // id → File
+async function dragPic(r) {
+  if (!r || !r.image || DRAGPIC.has(r.id)) return
+  DRAGPIC.set(r.id, null)
+  try {
+    const raw = await fetch(wallSrc(r)).then(x => x.ok ? x.blob() : null)
+    // stored pictures come back without their type, so it's read from the first bytes
+    const b = raw && new Uint8Array(await raw.slice(0, 12).arrayBuffer())
+    const type = !b ? '' : b[0] === 0xff && b[1] === 0xd8 ? 'image/jpeg' : b[0] === 0x89 && b[1] === 0x50 ? 'image/png' : b[0] === 0x47 && b[1] === 0x49 ? 'image/gif' : b[8] === 0x57 && b[9] === 0x45 ? 'image/webp' : ''
+    if (!type) return DRAGPIC.delete(r.id)
+    const blob = new Blob([raw], { type })
+    const name = (titleOf(r) || 'reference').replace(/[^\p{L}\p{N} _-]+/gu, '').trim().slice(0, 60) || 'reference'
+    DRAGPIC.set(r.id, new File([blob], name + '.' + (blob.type.split('/')[1] || 'jpg').replace('jpeg', 'jpg'), { type: blob.type }))
+  } catch { DRAGPIC.delete(r.id) }
+}
+$('#grid').addEventListener('pointerover', e => { const c = e.target.closest('.card'); if (c && S.canWrite) dragPic(byId(c.dataset.id)) })
+function dragOut(dt, refs) {
+  const links = refs.map(r => r.url).filter(u => u && isWebLink(u))
+  const text = refs.map(r => [titleOf(r), r.url && isWebLink(r.url) ? r.url : '', r.note].filter(Boolean).join('\n')).join('\n\n')
+  if (text) dt.setData('text/plain', text)
+  if (links.length) dt.setData('text/uri-list', links.join('\r\n'))
+  for (const r of refs) { const f = DRAGPIC.get(r.id); if (f) try { dt.items.add(f) } catch { /* this browser can't carry files in a drag */ } }
+  const f = refs.length === 1 && DRAGPIC.get(refs[0].id)
+  if (f) try { dt.setData('DownloadURL', `${f.type}:${f.name}:${URL.createObjectURL(f)}`) } catch { /* only Chrome knows this one */ } // dropped on the desktop or a folder: the picture as a file
+}
+
 // drag cards onto a hashtag (the "Your hashtags" row, or the dock that appears while dragging)
 let dragIds = null
 $('#grid').addEventListener('dragstart', e => {
@@ -6394,6 +6423,7 @@ $('#grid').addEventListener('dragstart', e => {
   dragIds = S.sel.has(c.dataset.id) ? [...S.sel] : [c.dataset.id]
   e.dataTransfer.effectAllowed = 'copy'
   e.dataTransfer.setData('text/dailies-refs', JSON.stringify(dragIds))
+  dragOut(e.dataTransfer, dragIds.map(byId).filter(Boolean))
   const cnt = tagCounts()
   $('#dropdock').querySelector('p').textContent = `Drop on a hashtag to tag ${dragIds.length === 1 ? 'it' : `these ${dragIds.length}`}`
   $('#dropdock-row').innerHTML = Object.keys(cnt).sort((a, b) => cnt[b] - cnt[a]).slice(0, 18).map(t => `<span data-droptag="${esc(t)}">#${esc(t)}</span>`).join('') + '<span data-droptag="" class="new">+ New tag…</span>'
