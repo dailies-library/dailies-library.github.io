@@ -4575,6 +4575,11 @@ function party() {
 }
 // a saved link opens only if it is really http(s): the address parser ignores tabs and newlines, so a text check isn't enough
 const isWebLink = u => { try { return /^https?:$/.test(new URL(u).protocol) } catch { return false } }
+// a reference can sit in several boards / collections / playlists: one card in All, shown in each of their rows (Rohit, 28 Oct).
+// r.board is the first one (older references only have that), r.boards lists every one
+const boardsOf = r => [...new Set([r.board, ...(Array.isArray(r.boards) ? r.boards : [])].filter(Boolean))]
+const inBoard = (r, b) => r.board === b || (Array.isArray(r.boards) && r.boards.includes(b))
+const withBoard = (r, b) => { const all = boardsOf(r); return all.includes(b) ? null : all.length ? { boards: [...all, b] } : { board: b } } // the change that adds one, or null
 // ------------------------------------------------------------------ overlays
 const stack = []
 function openOverlay(el, onClose) {
@@ -4795,7 +4800,7 @@ async function importYtList() {
       // filed under the playlist too, so YouTube gets a "Your playlists" row like Pinterest boards (Rohit, 28 Oct)
       const board = String(l.title || '').trim().slice(0, 80) || null
       const r = await saveRef({ url: 'https://www.youtube.com/watch?v=' + v.id, tags: [tag], extra: { title: v.title.slice(0, 300), author: v.author.slice(0, 200), ...(board ? { board } : {}) } })
-      if (r.dup && board && r.id) { const d = byId(r.id); if (d && !d.board && d.source === 'youtube') await patch(r.id, { board }) } // brought in before: now it has its playlist
+      if (r.dup && board && r.id) { const d = byId(r.id); const add = d && d.source === 'youtube' && withBoard(d, board); if (add) await patch(r.id, add) } // already here: now in this playlist too
       r.dup ? run.had++ : run.done++
     } catch { run.failed++ }
     if ((run.done + run.had + run.failed) % 3 === 0) impYtSoon()
@@ -4827,10 +4832,11 @@ async function syncYtLists(manual) {
     for (const f of lists) {
       const res = await askExtension({ type: 'dailies:ytlist', link: f.url, nonce: ++IMP.nonce }, 'dailies:ytlist-result', 40000)
       if (!res || !res.list) continue
-      const keys = new Set(S.refs.map(r => r.key).filter(Boolean))
+      const byKey = new Map(S.refs.filter(r => r.key).map(r => [r.key, r]))
       for (const v of res.list.videos) {
         const url = 'https://www.youtube.com/watch?v=' + v.id
-        if (keys.has(dedupeKey(cleanUrl(url)))) continue // already here: nothing is rewritten
+        const have = byKey.get(dedupeKey(cleanUrl(url)))
+        if (have) { const add = have.source === 'youtube' && withBoard(have, f.label); if (add) await patch(have.id, add); continue } // already here: only joins this playlist
         // auto: a video you deleted on purpose isn't brought back by a sync
         const r = await saveRef({ url, tags: f.tag ? [f.tag] : [], auto: true, extra: { title: v.title.slice(0, 300), author: v.author.slice(0, 200), board: f.label } }).catch(() => null)
         if (r && !r.dup) added++
@@ -5396,7 +5402,7 @@ function matches(r, { source = S.source, board = S.board, via = S.via, kind = S.
   if (source !== 'all' && tabOf(r) !== source) return false
   if (source === 'all' && !keepSites && allHides(r, terms, via)) return false
   if (via === 'stills' ? !isStillTab(r) : via === 'notes' ? r.kind !== 'note' : via && r.via !== via) return false
-  if (board && r.board !== board) return false
+  if (board && !inBoard(r, board)) return false
   if (kind && r.kind !== kind) return false
   if (type && typeOf(r) !== type) return false
   if (S.newOnly && !isNew(r)) return false
@@ -5556,7 +5562,7 @@ function morphRow(box, html) {
 function renderBoards() {
   const sec = $('#boards'), k = S.source
   const by = {}
-  if (S.loaded && k !== 'all' && !S.via && !S.q && !S.smart && !S.similar) for (const r of S.refs) if (r.board && r.source === k) (by[r.board] ||= []).push(r)
+  if (S.loaded && k !== 'all' && !S.via && !S.q && !S.smart && !S.similar) for (const r of S.refs) if (r.source === k) for (const b of boardsOf(r)) (by[b] ||= []).push(r)
   const names = Object.keys(by).sort((a, b) => by[b].length - by[a].length || a.localeCompare(b))
   sec.classList.toggle('open', names.length > 0) // never hidden: it folds shut with its content still in place
   if (!names.length) { sec.dataset.sig = ''; S.boardLead = 0; return }
@@ -5680,7 +5686,7 @@ function render() {
     if (r.kind === 'note') noteCount++
     counts[tabOf(r)] = (counts[tabOf(r)] || 0) + 1
     if (!allHides(r, terms, null)) total++ // (the All count stays the same while Slack or Notes is open)
-    if (r.board) { boardCounts[r.board] = (boardCounts[r.board] || 0) + 1; boardSrc[r.board] ||= r.source }
+    for (const b of boardsOf(r)) { boardCounts[b] = (boardCounts[b] || 0) + 1; boardSrc[b] ||= r.source }
   }
   { const gn = ghostList().length; if (gn) { total += gn; counts.pinterest = (counts.pinterest || 0) + gn } } // pins on their way count already
   // the apps you save from are always there, with 0 until something arrives, so the bar never reshuffles (Rohit, 26 Oct: a
@@ -6605,7 +6611,7 @@ function openMenu(id, anchor, at = null) {
   menu.querySelector('button, a').focus({ preventScroll: true })
 }
 // a board (or Instagram collection): stop following it, or remove it with its pins (they won't come back from the board)
-const boardRefs = name => S.refs.filter(r => r.board === name && r.source === S.source)
+const boardRefs = name => S.refs.filter(r => inBoard(r, name) && r.source === S.source)
 const boardFollows = name => { const k = S.source === 'instagram' ? 'instagram' : S.source === 'youtube' ? 'youtube' : 'pinterest', n = String(name).toLowerCase(); return { k, list: (S.settings && S.settings[k]) || [], match: x => [x.label, x.board, x.name].some(v => v && String(v).toLowerCase().replace(/-/g, ' ') === n.replace(/-/g, ' ')) } }
 function openBoardMenu(name, anchor) {
   const menu = $('#cardmenu')
@@ -6738,7 +6744,10 @@ $('#cardmenu').addEventListener('click', async e => {
       const refs = boardRefs(name)
       if (!(await askConfirm({ title: `Delete the ${what} “${name}”?`, body: S.source === 'youtube' ? `Its ${refs.length} video${refs.length === 1 ? '' : 's'} leave your library.` : `Its ${refs.length} ${S.source === 'instagram' ? 'post' : 'pin'}${refs.length === 1 ? '' : 's'} leave your library, and Dailies stops following the ${what}, so they won’t come back.` }))) return
       if (S.board === name) S.board = null
-      const gone = deleteRefsBulk(refs) // off the wall at once; its toast has Undo
+      // a reference that's also in another board/playlist stays, just out of this one
+      const shared = refs.filter(r => boardsOf(r).length > 1)
+      for (const r of shared) { const rest = boardsOf(r).filter(b => b !== name); await patch(r.id, { board: rest[0], boards: rest }) }
+      const gone = deleteRefsBulk(refs.filter(r => !shared.includes(r))) // off the wall at once; its toast has Undo
       await unfollowBoard(name)
       await gone
     }
@@ -7926,14 +7935,15 @@ async function receiveSave(d) {
   const dup = (d.k !== 'image' && S.refs.find(r => r.key === dedupeKey(clean))) || (image && await sameImageAs(image))
   if (dup && (d.k === 'pin' || !dup.key || dup.key !== dedupeKey(clean))) { // the same picture under another link: keep the first, add any new tags
     const more = tags.filter(t => !(dup.tags || []).includes(t))
-    const board = d.k === 'pin' && !dup.board && d.board ? { board: String(d.board).slice(0, 120) } : {} // and file a pin under its board
+    const board = (d.k === 'pin' || d.k === 'igsave') && d.board ? withBoard(dup, String(d.board).slice(0, 120)) || {} : {} // and file it under this board / collection too
     const pkNew = pk && !dup.pk ? { pk } : {} // learn the picture key of pins saved before it existed
-    if (more.length || board.board || pkNew.pk) await patch(dup.id, { tags: [...(dup.tags || []), ...more], ...board, ...pkNew })
+    if (more.length || board.board || board.boards || pkNew.pk) await patch(dup.id, { tags: [...(dup.tags || []), ...more], ...board, ...pkNew })
     return { state: 'duplicate', ref: dup.id, why: dup.key === dedupeKey(clean) ? 'same link' : 'same picture' }
   }
   if (dup && d.k === 'igsave') { // already here (from Slack, say): just file it under the collection too
     const more = tags.filter(t => !(dup.tags || []).includes(t))
-    if (more.length || (!dup.board && d.board)) await patch(dup.id, { tags: [...(dup.tags || []), ...more], ...(!dup.board && d.board ? { board: String(d.board).slice(0, 120) } : {}) })
+    const join = d.board ? withBoard(dup, String(d.board).slice(0, 120)) : null // saved before: now in this board / collection too
+    if (more.length || join) await patch(dup.id, { tags: [...(dup.tags || []), ...more], ...(join || {}) })
     return { state: 'duplicate', ref: dup.id }
   }
   if (dup) {
