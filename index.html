@@ -4802,7 +4802,45 @@ async function importYtList() {
   }
   run.finished = true
   renderYtProgress()
+  if (!run.stopped) await followYtList(l)
 }
+
+// ---- following a playlist (Rohit, 28 Oct: "if I add it on YouTube and then refresh it here, is it gonna work?")
+// An imported playlist is remembered; when Dailies opens, every 30 minutes while it's open, and on Refresh, the extension
+// reads it again (the same public read as the import, no YouTube sign-in) and only videos that aren't in Dailies yet come
+// in. A video you deleted stays deleted; Stop following is in the playlist's ⋯ menu.
+async function followYtList(l) {
+  if (!S.canWrite || !l || !l.id) return
+  const have = (S.settings && S.settings.youtube) || []
+  const entry = { id: l.id, url: 'https://www.youtube.com/playlist?list=' + l.id, label: String(l.title || '').trim().slice(0, 80) || 'Playlist', tag: ytTag(l) }
+  await setSetting({ youtube: [...have.filter(x => x.id !== l.id), entry] }).catch(() => {})
+}
+let ytSyncing = false, ytSyncAt = 0
+async function syncYtLists(manual) {
+  const lists = (S.settings && S.settings.youtube) || []
+  if (ytSyncing || !lists.length || !S.canWrite || !S.inboxOpen) return 0
+  if (!manual && Date.now() - ytSyncAt < 10 * 60e3) return 0
+  if (!(await extReady())) return 0
+  ytSyncing = true; ytSyncAt = Date.now()
+  let added = 0
+  try {
+    for (const f of lists) {
+      const res = await askExtension({ type: 'dailies:ytlist', link: f.url, nonce: ++IMP.nonce }, 'dailies:ytlist-result', 40000)
+      if (!res || !res.list) continue
+      const keys = new Set(S.refs.map(r => r.key).filter(Boolean))
+      for (const v of res.list.videos) {
+        const url = 'https://www.youtube.com/watch?v=' + v.id
+        if (keys.has(dedupeKey(cleanUrl(url)))) continue // already here: nothing is rewritten
+        // auto: a video you deleted on purpose isn't brought back by a sync
+        const r = await saveRef({ url, tags: f.tag ? [f.tag] : [], auto: true, extra: { title: v.title.slice(0, 300), author: v.author.slice(0, 200), board: f.label } }).catch(() => null)
+        if (r && !r.dup) added++
+      }
+    }
+  } finally { ytSyncing = false }
+  if (added && !manual) toast(`${added} new video${added === 1 ? '' : 's'} from your YouTube playlists`)
+  return added
+}
+setInterval(() => syncYtLists(false), 30 * 60e3)
 let ytRaf = 0
 function impYtSoon() { if (!ytRaf) ytRaf = requestAnimationFrame(() => { ytRaf = 0; renderYtProgress() }) }
 function renderYtProgress() {
@@ -5308,7 +5346,7 @@ function inOrder(db) {
     S.loaded = true
     render()
     openInbox()
-    if (first) { $('#import-btn').hidden = !S.canWrite || !!window.DAILIES_DESKTOP; maybeWelcome(); startProjects(); setTimeout(thumbBackfill, 12000); setTimeout(ytPlaylistBackfill, 4000); receiveShared().catch(() => {}); warmWall() }
+    if (first) { $('#import-btn').hidden = !S.canWrite || !!window.DAILIES_DESKTOP; maybeWelcome(); startProjects(); setTimeout(thumbBackfill, 12000); setTimeout(ytPlaylistBackfill, 4000); setTimeout(() => syncYtLists(false), 9000); receiveShared().catch(() => {}); warmWall() }
     if (projectsOn()) renderProjects()
     if (S.detail) refreshDetail()
     if (notesOn()) { decorateRefs(); if ($('#notes-view').classList.contains('lib-open')) renderNtLib() }
@@ -6524,7 +6562,7 @@ function openMenu(id, anchor, at = null) {
 }
 // a board (or Instagram collection): stop following it, or remove it with its pins (they won't come back from the board)
 const boardRefs = name => S.refs.filter(r => r.board === name && r.source === S.source)
-const boardFollows = name => { const k = S.source === 'instagram' ? 'instagram' : 'pinterest', n = String(name).toLowerCase(); return { k, list: (S.settings && S.settings[k]) || [], match: x => [x.label, x.board, x.name].some(v => v && String(v).toLowerCase().replace(/-/g, ' ') === n.replace(/-/g, ' ')) } }
+const boardFollows = name => { const k = S.source === 'instagram' ? 'instagram' : S.source === 'youtube' ? 'youtube' : 'pinterest', n = String(name).toLowerCase(); return { k, list: (S.settings && S.settings[k]) || [], match: x => [x.label, x.board, x.name].some(v => v && String(v).toLowerCase().replace(/-/g, ' ') === n.replace(/-/g, ' ')) } }
 function openBoardMenu(name, anchor) {
   const menu = $('#cardmenu')
   if (menuFor === 'board:' + name) return closeMenu()
@@ -6645,7 +6683,7 @@ $('#cardmenu').addEventListener('click', async e => {
   if (menuFor.startsWith('board:')) {
     const name = menuFor.slice(6), act = item.dataset.act, what = S.source === 'instagram' ? 'collection' : S.source === 'youtube' ? 'playlist' : 'board'
     closeMenu()
-    if (act === 'unfollow-board') { await unfollowBoard(name); toast(`Stopped following “${name}”. Its pins stay in your library.`) }
+    if (act === 'unfollow-board') { await unfollowBoard(name); toast(`Stopped following “${name}”. Its ${S.source === 'youtube' ? 'videos' : S.source === 'instagram' ? 'posts' : 'pins'} stay in your library.`) }
     if (act === 'follow-board') {
       let b = knownBoard(name)
       if (!b && pinUser()) { toast('Finding the board on Pinterest…'); await findPinBoards(pinUser()).catch(() => {}); b = knownBoard(name) }
@@ -7697,6 +7735,7 @@ async function refreshAll() {
     if (host && host.reload) await host.reload()
     if (S.mcp && S.settings && S.settings.channelId) await syncSlack(false)
     sendBoards(true) // new Instagram saves arrive a little later, with their own message
+    await syncYtLists(true) // followed YouTube playlists: their new videos
     // ask again for previews that were asked for over 90 s ago and still haven't arrived
     if (S.asked && S.askedAt) for (const [id, t] of S.askedAt) if (Date.now() - t > 90e3) { S.asked.delete(id); S.askedAt.delete(id) }
     await new Promise(r => setTimeout(r, 60))
