@@ -1,4 +1,4 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="robots" content="noindex"><meta http-equiv="Content-Security-Policy" content="object-src 'none'; base-uri 'self'; form-action 'self'"><link rel="preconnect" href="https://cthexlqrspcnbvylpmyg.supabase.co" crossorigin><link rel="manifest" href="/manifest.webmanifest"><meta name="theme-color" content="#0b0b0c"><link rel="apple-touch-icon" href="/icons/apple-touch-icon.png"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Dailies"><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js" integrity="sha384-0w2KAL2YHP6wKOkUDzkCDGgVvfmHnj02DHeQ6XcHOgTfFsGyonKOpShMH1x6nk9o" crossorigin="anonymous"></script><script>// Dailies on the web: stands in for what claude.ai gives the page (window.claude.use(...)), using Supabase
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="robots" content="noindex"><meta http-equiv="Content-Security-Policy" content="object-src 'none'; base-uri 'self'; form-action 'self'"><link rel="preconnect" href="https://cthexlqrspcnbvylpmyg.supabase.co" crossorigin><link rel="manifest" href="/manifest.webmanifest"><meta name="theme-color" content="#0b0b0c"><link rel="apple-touch-icon" href="/icons/apple-touch-icon.png"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Dailies"><script>if (window.top !== window.self) location.replace('about:blank')</script><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js" integrity="sha384-0w2KAL2YHP6wKOkUDzkCDGgVvfmHnj02DHeQ6XcHOgTfFsGyonKOpShMH1x6nk9o" crossorigin="anonymous"></script><script>// Dailies on the web: stands in for what claude.ai gives the page (window.claude.use(...)), using Supabase
 // for sign-in, each person's private library (table `docs`) and their pictures and videos (bucket `media`).
 // Loaded after supabase-js and before the page's own script.
 (() => {
@@ -1104,6 +1104,14 @@ body.sites-mode .row1 { padding-bottom: 12px; }
 .st-wrap.list .sc-top { padding-right: 0 !important; }
 .st-wrap.list .sc-d { -webkit-line-clamp: var(--sc-lines, 1); }
 .st-wrap.list .sc-star, .st-wrap.list .sc-arch, .st-wrap.list .site.sc .more { top: 50%; translate: 0 -50%; }
+/* list rows have no card, so they sit on the backdrop colour: text and icons follow it (Rohit, 28 Oct) */
+.st-wrap.list .site.sc { border-bottom-color: color-mix(in srgb, var(--on-backdrop, var(--text)) 10%, transparent); }
+.st-wrap.list .site.sc:hover { background: color-mix(in srgb, var(--on-backdrop, var(--text)) 7%, transparent); }
+.st-wrap.list .sc-n b { color: var(--on-backdrop, var(--text)); }
+.st-wrap.list .sc-d { color: var(--on-backdrop-muted, var(--muted)); }
+.st-wrap.list .sc-n span, .st-wrap.list .sc-d.none, .st-wrap.list .sc-star:not(.on), .st-wrap.list .sc-arch, .st-wrap.list .site.sc .more { color: var(--on-backdrop-faint, var(--faint)); }
+.st-wrap.list .sc-star:not(.on):hover, .st-wrap.list .sc-arch:hover, .st-wrap.list .site.sc .more:hover { color: var(--on-backdrop, var(--text)); }
+.st-head span { color: var(--on-backdrop-faint, var(--faint)); }
 
 .site.sc { padding: 16px 16px 16px; display: grid; gap: 12px; align-content: start; }
 .sc-top { display: flex; align-items: center; gap: 12px; min-width: 0; padding-right: 68px; }
@@ -4531,6 +4539,8 @@ function party() {
   }
   requestAnimationFrame(step)
 }
+// a saved link opens only if it is really http(s): the address parser ignores tabs and newlines, so a text check isn't enough
+const isWebLink = u => { try { return /^https?:$/.test(new URL(u).protocol) } catch { return false } }
 // ------------------------------------------------------------------ overlays
 const stack = []
 function openOverlay(el, onClose) {
@@ -6820,13 +6830,13 @@ function fillDetail(r) {
     stage.innerHTML = `<div class="slides"><div class="strip">${ids.map(id => `<img alt="" draggable="false" src="${esc(imgSrc(id))}">`).join('')}</div><button type="button" class="slnav prev" aria-label="Previous" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></button><button type="button" class="slnav next" aria-label="Next"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></button><div class="sldots">${ids.map((_, i) => `<i${i ? '' : ' class="on"'}></i>`).join('')}</div>${typePill(r)}</div>`
     wireSlides(stage.querySelector('.slides'))
   }
-  else if (r.url && embedOf(r) && !NO_EMBED) { // YouTube plays right here in its own player (nothing is downloaded); hovering still scrubs its frames
+  else if (r.url && isWebLink(r.url) && embedOf(r) && !NO_EMBED) { // YouTube plays right here in its own player (nothing is downloaded); hovering still scrubs its frames
     stage.innerHTML = `<div class="golink embed">${pic}${typePill(r)}<button type="button" class="playbig" aria-label="Play here"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l11-6.5z"/></svg></button><a class="gotag on" href="${esc(r.url)}" target="_blank" rel="noopener noreferrer">Watch on ${esc(where)} ↗</a></div>`
     stage.dataset.rid = r.id
     const ar = /\/shorts\//.test(r.url) ? 9 / 16 : vr ? 1 / vr : 16 / 9 // width ÷ height: a Short is vertical
     stage.querySelector('.playbig').onclick = () => { stage.querySelector('.golink').outerHTML = `<div class="golink playing player" style="--ar:${ar.toFixed(4)}"><iframe src="${esc(embedOf(r))}" allow="autoplay; fullscreen; picture-in-picture; encrypted-media" allowfullscreen referrerpolicy="strict-origin-when-cross-origin" title="Video"></iframe></div>` }
   }
-  else if (r.url) stage.innerHTML = `<a class="golink" href="${esc(r.url)}" target="_blank" rel="noopener noreferrer" aria-label="${video ? 'Watch' : 'Open'} on ${esc(where)}">${pic}${typePill(r)}<span class="gotag">${video ? 'Watch' : 'Open'} on ${esc(where)} ↗</span></a>`
+  else if (r.url && isWebLink(r.url)) stage.innerHTML = `<a class="golink" href="${esc(r.url)}" target="_blank" rel="noopener noreferrer" aria-label="${video ? 'Watch' : 'Open'} on ${esc(where)}">${pic}${typePill(r)}<span class="gotag">${video ? 'Watch' : 'Open'} on ${esc(where)} ↗</span></a>`
   else if (VIDEO_PREVIEWS && scrubbable(r)) stage.innerHTML = `<div class="golink still">${pic}${typePill(r)}</div>` // your own video, kept as frames: they play here
   else stage.innerHTML = pic
   const link = stage.querySelector('a.golink, div.golink.still, div.golink.embed')
@@ -7274,7 +7284,9 @@ async function saveRef({ url, note = '', tags = [], image = null, extra = null, 
   const now = new Date().toISOString()
   let ref
   if (url) {
-    const clean = cleanUrl(url), source = sourceOf(clean), ck = (extra && extra.key) || dedupeKey(clean)
+    const clean = cleanUrl(url)
+    if (!isWebLink(clean)) throw new Error('That isn’t a web link')
+    const source = sourceOf(clean), ck = (extra && extra.key) || dedupeKey(clean)
     const dup = S.refs.find(r => r.key === ck)
     if (!dup && isRemoved(ck)) { if (auto) return { id: null, dup: true, skipped: true }; rememberRemoved([{ key: ck }], false) } // you saved it again on purpose
     if (dup) {
@@ -13300,9 +13312,10 @@ function applyBg(hex, save = true) {
     root.style.setProperty('--backdrop', hex)
     root.style.setProperty('--on-backdrop', light ? '#191917' : '#edece7')
     root.style.setProperty('--on-backdrop-muted', light ? 'rgba(25, 25, 23, .62)' : 'rgba(237, 236, 231, .62)')
+    root.style.setProperty('--on-backdrop-faint', light ? 'rgba(25, 25, 23, .42)' : 'rgba(237, 236, 231, .42)')
     world.style.setProperty('--text', light ? '#191917' : '#edece7') // canvas text and ink
   } else {
-    for (const v of ['--backdrop', '--on-backdrop', '--on-backdrop-muted']) root.style.removeProperty(v)
+    for (const v of ['--backdrop', '--on-backdrop', '--on-backdrop-muted', '--on-backdrop-faint']) root.style.removeProperty(v)
     world.style.removeProperty('--text')
   }
   S.bg = hex
@@ -13920,8 +13933,7 @@ document.addEventListener('keydown', e => {
 })
 // ------------------------------------------------------------------ shared from a phone's Share menu
 // Added to a phone's home screen, Dailies is in the Share menu (Android). sw.js keeps what was shared (a link, its text,
-// pictures or videos) and opens /?shared=1; it is saved here as soon as your library is ready, straight away with no extra
-// step, and kept until then (a share made while signed out lands once you sign in).
+// pictures or videos) and opens /?shared=1; it is saved here as soon as your library is ready, straight away (several at once ask first), and kept until then (a share made while signed out lands once you sign in).
 async function receiveShared() {
   if (!window.DAILIES_WEB || !('caches' in window)) return
   if (/[?&]shared=1/.test(location.search)) history.replaceState(null, '', location.pathname)
@@ -13944,6 +13956,9 @@ async function saveShared(meta, files) {
   const links = linksIn(text)
   const note = String(meta.text || '').replace(/https?:\/\/[^\s<>"'`]+/g, '').trim().slice(0, 2000)
   const media = files.filter(f => /^(image|video)\//.test(f.type))
+  // one thing shared saves straight away; several at once ask first, so a website can't fill your library behind your back
+  const n = media.length + links.length
+  if (n > 1 && !(await askConfirm({ title: `Save ${n} shared items?`, body: 'They were shared to Dailies just now.', yes: 'Save' }))) return
   if (media.length) {
     let last = null, ok = 0
     for (const f of media) {

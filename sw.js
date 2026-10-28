@@ -82,6 +82,9 @@ async function keepWhole(path) {
 // Shared to Dailies from a phone's Share menu (manifest share_target): keep the link, text and files, then open Dailies, which
 // saves them as soon as your library is ready (46-share-target.js). Kept here, so a share made while signed out isn't lost.
 async function receiveShare(req) {
+  // the phone's Share menu sends no referrer; a form on another website that posts here does, so that is refused
+  let from = ''; try { from = req.referrer ? new URL(req.referrer).origin : '' } catch { /* no referrer */ }
+  if (from && from !== self.location.origin) return Response.redirect('/', 303)
   const form = await req.formData().catch(() => null)
   if (form) {
     const box = await caches.open(SHARE)
