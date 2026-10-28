@@ -6020,18 +6020,23 @@ function layout() {
   }
   if (before.size || changed) {
     const gr = grid.getBoundingClientRect()
-    let fade = 0
+    const near = []
     for (const el of grid.querySelectorAll('.card')) {
       const b = el.getBoundingClientRect()
       if (b.bottom < -300 || b.top > innerHeight + 300) continue
+      near.push([el, b])
+    }
+    // a different set of cards (a filter, a sort, a shuffle): every card on screen fades up in place, as one quick wave from
+    // the top down across all columns. (It used to go in page order, which is column by column, with only the first 40
+    // fading: the middle columns sat empty while the rest already showed. Rohit, 28 Oct: "left is loading, right is loaded")
+    if (changed) near.sort((p, q) => Math.round(p[1].top / 40) - Math.round(q[1].top / 40) || p[1].left - q[1].left)
+    for (const [k, [el, b]] of near.entries()) {
       const o = before.get(el.dataset.id)
-      if (changed) { // a different set of cards (a filter, a sort, a shuffle): they all fade up in place, none slide across the page
-        if (fade < 40) {
-          el.classList.remove('enter'); void el.offsetWidth
-          el.style.setProperty('--d', ((S.boardLead || 0) + Math.min(fade, 20) * 45) + 'ms'); el.classList.add('enter'); fade++
-          el.addEventListener('animationend', () => el.classList.remove('enter'), { once: true })
-          setTimeout(() => el.classList.remove('enter'), 2600) // in case the browser skipped the animation
-        }
+      if (changed) {
+        el.classList.remove('enter'); void el.offsetWidth
+        el.style.setProperty('--d', ((S.boardLead || 0) + Math.min(k, 24) * 12) + 'ms'); el.classList.add('enter')
+        el.addEventListener('animationend', () => el.classList.remove('enter'), { once: true })
+        setTimeout(() => el.classList.remove('enter'), 2600) // in case the browser skipped the animation
       } else if (o) { // the same cards re-flowing (a new save, a resize): slide from where it was, unless the card size itself changed
         const dx = o.x - (b.left - gr.left), dy = o.y - (b.top - gr.top)
         if (Math.abs(o.w - b.width) < 2 && (Math.abs(dx) > 2 || Math.abs(dy) > 2) && Math.abs(dx) < 1400 && Math.abs(dy) < 1800)
