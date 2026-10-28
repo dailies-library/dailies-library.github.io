@@ -1396,6 +1396,9 @@ canvas.scrub.on { opacity: 1; }
 .wall-more[hidden] { display: none; }
 .wall-more i { width: 18px; height: 18px; border-radius: 50%; border: 2px solid color-mix(in srgb, currentColor 25%, transparent); border-top-color: currentColor; animation: spin .8s linear infinite; }
 @media (prefers-reduced-motion: reduce) { .wall-more i { animation-duration: 2.4s; } }
+/* in the YouTube view everything is a video, so its "Video" label says nothing (Rohit, 28 Oct); Instagram keeps its labels
+   (videos, carousels and pictures mix there) */
+body[data-src="youtube"] #grid .vlabel { display: none; }
 /* overlays */
 .overlay { position: fixed; inset: 0; z-index: 50; background: var(--veil); display: grid; grid-template-columns: minmax(0, 1fr); place-items: center; padding: 24px; } /* minmax: a panel's width follows the screen, not its longest line */
 .sheet, .lightbox, .drawer { background: var(--raised); border: 1px solid var(--line-2); box-shadow: var(--shadow); }
@@ -5603,6 +5606,7 @@ $('#shelf-row').addEventListener('click', e => {
   scrollTo({ top: 0, behavior: 'smooth' })
 })
 function render() {
+  document.body.dataset.src = S.source || 'all' // (the YouTube view hides the Video label: everything there is one)
   const terms = searchTerms(S.q)
   S.filtered = S.refs.filter(r => matches(r, { terms: S.smart ? [] : terms }))
   if (ghostShown()) S.filtered = S.filtered.concat(ghostList().filter(g => !S.board || g.board === S.board))
