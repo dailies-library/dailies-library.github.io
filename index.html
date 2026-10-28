@@ -1389,7 +1389,11 @@ canvas.scrub.on { opacity: 1; }
 .empty { color: var(--on-backdrop, var(--text)); }
 .empty h2 { margin: 0; font: 600 26px/1.15 var(--ui); letter-spacing: -.02em; text-wrap: balance; }
 .empty p { margin: 0; color: var(--on-backdrop-muted, var(--muted)); max-width: 440px; text-wrap: pretty; }
-
+/* "Adding more…" under the last card while new ones are still coming in */
+.wall-more { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 28px 0 56px; color: var(--on-backdrop-muted, var(--muted)); font-size: 13px; }
+.wall-more[hidden] { display: none; }
+.wall-more i { width: 18px; height: 18px; border-radius: 50%; border: 2px solid color-mix(in srgb, currentColor 25%, transparent); border-top-color: currentColor; animation: spin .8s linear infinite; }
+@media (prefers-reduced-motion: reduce) { .wall-more i { animation-duration: 2.4s; } }
 /* overlays */
 .overlay { position: fixed; inset: 0; z-index: 50; background: var(--veil); display: grid; grid-template-columns: minmax(0, 1fr); place-items: center; padding: 24px; } /* minmax: a panel's width follows the screen, not its longest line */
 .sheet, .lightbox, .drawer { background: var(--raised); border: 1px solid var(--line-2); box-shadow: var(--shadow); }
@@ -2729,6 +2733,7 @@ body { letter-spacing: -.005em; }
     </label>
   </div>
   <div class="grid" id="grid"></div>
+  <div class="wall-more" id="wall-more" role="status" hidden><i aria-hidden="true"></i><span>Adding more…</span></div>
   <div class="webhint" id="webhint" hidden></div>
   <div class="empty" id="empty" hidden>
     <h2>Opening your library…</h2>
@@ -5288,6 +5293,7 @@ function inOrder(db) {
     S.refs = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(r => !(S.gone && S.gone.has(r.id))) // still being deleted: never flickers back
     webPreviewsSoon()
     if (known) setTimeout(() => newSaves(S.refs.filter(r => !known.has(r.id)), known.size), 0)
+    if (known && S.refs.some(r => !known.has(r.id))) { S.lastArrival = Date.now(); wallMore() }
     // what arrives while you're looking joins at the bottom, one after another, so nothing on screen moves (Rohit: no abrupt shifts)
     if (known) { S.arrived ||= []; for (const r of S.refs) if (!known.has(r.id) && !S.arrived.includes(r.id) && !(S.restored && S.restored.has(r.id))) S.arrived.push(r.id) }
     syncVocab()
@@ -6017,6 +6023,16 @@ function trioHtml(p) {
   const pics = p.filter(Boolean).slice(0, 3)
   return `<span class="trio" style="grid-template-columns:repeat(${Math.max(1, pics.length)}, 1fr)">${pics.length ? pics.map(r => `<img alt="" decoding="async" src="${esc(wallSrc(r))}"${focusAttr(r)}>`).join('') : '<i></i>'}</span>`
 }
+// under the last card: a spinning circle while more is being added at the bottom (an import running, or saves that have
+// just arrived), so someone scrolling down knows more is coming (Rohit, 28 Oct)
+let wallMoreTimer = 0
+function wallMore() {
+  const importing = [IMP.run, IMP.igRun, IMP.ytRun].some(r => r && !r.finished && !r.stopped)
+  const on = S.loaded && S.filtered.length > 0 && (importing || Date.now() - (S.lastArrival || 0) < 4000)
+  $('#wall-more').hidden = !on
+  clearTimeout(wallMoreTimer)
+  if (on) wallMoreTimer = setTimeout(wallMore, 1000)
+}
 // masonry: each card goes into the currently shortest column
 const cache = new Map()
 const LOADED = new Set() // picture addresses that have already been shown, so a rebuilt card doesn't fade them in a second time
@@ -6085,6 +6101,7 @@ function layout() {
   }
   grid.style.setProperty('--gap', gap + 'px')
   syncSel()
+  wallMore()
 }
 // while the library loads: a wall of grey cards in the same columns
 function skeleton() {
