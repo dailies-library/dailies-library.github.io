@@ -871,7 +871,7 @@ main { padding: 32px 40px 96px; }
 .boardshelf.open { grid-template-rows: 1fr; margin-bottom: 34px; opacity: 1; pointer-events: auto; }
 .bs-in { min-height: 0; overflow: hidden; margin: 0 -18px; padding: 0 18px; }
 .boardshelf:not(.open) .shelf-nav { display: none !important; }
-.boardshelf.open .coll { animation: collin .45s cubic-bezier(.2, .8, .2, 1) backwards; animation-delay: calc(var(--i, 0) * 70ms); }
+.boardshelf.open .coll { animation: collin .45s cubic-bezier(.2, .8, .2, 1) backwards; animation-delay: calc(var(--i, 0) * 40ms); }
 .boardshelf.still .coll { animation: none; }
 @keyframes collin { from { opacity: 0; transform: translateY(10px); } }
 @media (prefers-reduced-motion: reduce) { .boardshelf, .boardshelf .coll { transition: none; animation: none; } }
@@ -1409,7 +1409,7 @@ canvas.scrub.on { opacity: 1; }
 @media (prefers-reduced-motion: reduce) { .wall-more i { animation-duration: 2.4s; } }
 /* in the YouTube view everything is a video, so its "Video" label says nothing (Rohit, 28 Oct); Instagram keeps its labels
    (videos, carousels and pictures mix there) */
-body[data-src="youtube"] #grid .vlabel { display: none; }
+body[data-wallsrc="youtube"] #grid .vlabel { display: none; }
 /* overlays */
 .overlay { position: fixed; inset: 0; z-index: 50; background: var(--veil); display: grid; grid-template-columns: minmax(0, 1fr); place-items: center; padding: 24px; } /* minmax: a panel's width follows the screen, not its longest line */
 .sheet, .lightbox, .drawer { background: var(--raised); border: 1px solid var(--line-2); box-shadow: var(--shadow); }
@@ -5584,7 +5584,7 @@ function renderBoards() {
   if (sig === sec.dataset.sig) { S.boardLead = 0; return }
   const fresh = !String(sec.dataset.sig || '').startsWith(k + '|') // only slide in when it first appears
   sec.dataset.sig = sig
-  S.boardLead = fresh ? Math.min(names.length, 8) * 70 + 250 : 0 // the boards fade in first; the cards below start once they are done
+  S.boardLead = fresh ? 80 : 0 // the boards and the cards below fade in together (waiting for the boards left the wall empty for a second: Rohit, 30 Oct, "the wall should work 100%")
   sec.classList.toggle('still', !fresh) // cards only fade in when the row first opens, not when you pick a board
   $('#boards-row').innerHTML = names.map((b, i) => {
     const p = pics(b)
@@ -5661,7 +5661,7 @@ $('#shelf-row').addEventListener('click', e => {
   scrollTo({ top: 0, behavior: 'smooth' })
 })
 function render() {
-  document.body.dataset.src = S.source || 'all' // (the YouTube view hides the Video label: everything there is one)
+  document.body.dataset.wallsrc = S.source || 'all' // (the YouTube view hides the Video label: everything there is one). Not data-src: the card click checks for that name (it's the open-the-original arrow), so on body every card click was taken as the arrow and nothing opened (30 Oct)
   const terms = searchTerms(S.q)
   S.filtered = S.refs.filter(r => matches(r, { terms: S.smart ? [] : terms }))
   if (ghostShown()) S.filtered = S.filtered.concat(ghostList().filter(g => !S.board || g.board === S.board))
@@ -6292,7 +6292,7 @@ function buildCard(r) {
 $('#grid').addEventListener('click', e => {
   const c = e.target.closest('.card')
   if (!c) return
-  if (e.target.closest('[data-src]')) { e.stopPropagation(); return } // the arrow is a real link: let it open the original
+  if (e.target.closest('a[data-src]')) { e.stopPropagation(); return } // the arrow is a real link: let it open the original
   const more = e.target.closest('[data-more]')
   if (more) { e.stopPropagation(); openMenu(c.dataset.id, more); return }
   if (S.lpJustFired) { S.lpJustFired = false; e.preventDefault(); return } // the tap that ends a long-press
@@ -10044,7 +10044,7 @@ $('#st-wrap').addEventListener('click', async e => {
     return
   }
   const c = e.target.closest('.site'); if (!c) return
-  if (e.target.closest('[data-src]')) { e.stopPropagation(); return }
+  if (e.target.closest('a[data-src]')) { e.stopPropagation(); return }
   const more = e.target.closest('[data-more]')
   if (more) { e.stopPropagation(); if (c.classList.contains('lib')) openLibMenu(c.dataset.url, more); else openMenu(c.dataset.id, more); return }
   // a website card opens the website (its details, categories and price are in the ⋯ menu)
