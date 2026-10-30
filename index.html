@@ -40,11 +40,23 @@
   // ---------------------------------------------------------------- sign in
   let uid = null
   const signedIn = new Promise(resolve => {
-    const done = session => { uid = session.user.id; W.email = session.user.email || ''; hideGate(); setTimeout(resolve, 0) } // the library loads outside the auth callback
-    sb.auth.getSession().then(({ data }) => { tellWorker(data.session); if (data.session) done(data.session); else showGate() })
+    const done = session => { uid = session.user.id; W.email = session.user.email || ''; W.guest = !!session.user.is_anonymous; try { localStorage.removeItem(WANT_SIGNIN) } catch {} hideGate(); setTimeout(resolve, 0) } // the library loads outside the auth callback
+    sb.auth.getSession().then(({ data }) => { tellWorker(data.session); if (data.session) done(data.session); else if (wantsSignIn()) showGate(); else guest().catch(() => showGate()) })
     sb.auth.onAuthStateChange((event, session) => { tellWorker(session, event === 'SIGNED_OUT'); if (session && !uid) done(session); if (event === 'SIGNED_OUT') W.forgetCopy().then(() => location.reload()) })
   })
   W.signOut = () => sb.auth.signOut()
+  // No login (Rohit, 30 Oct: "no login at all"): someone with no session gets a guest library straight away (a Supabase
+  // anonymous user: same private rows and files as an account, but it lives in this browser only). The sign-in form is
+  // only for people who ask for it: "Sign in to an account" in Settings, or #signin in the address. If guests aren't
+  // switched on in Supabase, the form shows as before.
+  const WANT_SIGNIN = 'dailies-want-signin'
+  function wantsSignIn() {
+    if (/^#signin$/.test(location.hash)) { history.replaceState(null, '', location.pathname + location.search); return true }
+    try { return localStorage.getItem(WANT_SIGNIN) === '1' } catch { return false }
+  }
+  async function guest() { const { error } = await sb.auth.signInAnonymously(); if (error) throw error }
+  W.signInInstead = () => { try { localStorage.setItem(WANT_SIGNIN, '1') } catch {} return sb.auth.signOut() }
+  W.useAsGuest = () => { try { localStorage.removeItem(WANT_SIGNIN) } catch {} return guest() }
   // the link-preview server function (supabase/functions/preview): the page sends the signed-in user's token with it
   W.token = async () => { const { data } = await sb.auth.getSession(); return data.session ? data.session.access_token : null }
   W.previewUrl = SUPA_URL + '/functions/v1/preview'
@@ -83,6 +95,7 @@
         <input type="password" id="g-pass" placeholder="Password" autocomplete="current-password" minlength="8" required>
         <button type="submit" class="primary" id="g-go">Sign in</button>
         ${PROV.google ? '' : `<button type="button" class="ghost" id="g-mode">New here? Create an account</button>`}
+        <button type="button" class="ghost" id="g-guest">Use Dailies without an account</button>
         <div class="msg" id="g-msg"></div>
       </form>`
       document.body.appendChild(g)
@@ -104,6 +117,7 @@
       }
       if (PROV.google) $('#g-google').onclick = () => social($('#g-google'), 'google', { hd: 'invideo.io', prompt: 'select_account' })
       // the "Create an account" switch shows while Google sign-in is off (email + password accounts, @invideo.io only)
+      $('#g-guest').onclick = () => { say('Opening Dailies…'); W.useAsGuest().catch(() => say('Using Dailies without an account isn’t switched on yet. Sign in instead.', true)) }
       if ($('#g-mode')) $('#g-mode').onclick = () => {
         creating = !creating
         $('#g-go').textContent = creating ? 'Create account' : 'Sign in'
@@ -427,7 +441,7 @@
   const user = {
     isOwner: async () => true, canEdit: async () => true, can: async () => true,
     id: async () => (await signedIn, uid),
-    me: async () => (await signedIn, { id: uid, name: W.email.split('@')[0] }),
+    me: async () => (await signedIn, { id: uid, name: W.email ? W.email.split('@')[0] : 'Guest' }),
     profiles: async ids => Object.fromEntries((ids || []).map(i => [i, { id: i, name: i === uid ? W.email.split('@')[0] : '' }])),
     search: async () => [],
   }
@@ -8351,7 +8365,10 @@ function renderSettings() {
 function webSettings(body, sec, noun) {
   const W = window.DAILIES_WEB_API || {}
   body.querySelectorAll('[data-ss="thumbs"], [data-ss="data"]').forEach(el => el.remove()) // Slack stays: it works here through the server function
-  body.insertAdjacentHTML('afterbegin', sec('account', glyph('note'), 'Account', '', esc(W.email || 'Signed in'), `
+  body.insertAdjacentHTML('afterbegin', W.guest ? sec('account', glyph('note'), 'Account', '', 'No account', `
+      <p class="sline">You’re using Dailies without an account. Your library is private and is kept for <b>this browser only</b>: clearing its data or switching to another computer or phone starts an empty library. Use <b>Export everything</b> below to keep a copy.</p>
+      <div class="ss-actions"><button class="btn" id="web-signin" type="button">Sign in to an account</button></div>`)
+    : sec('account', glyph('note'), 'Account', '', esc(W.email || 'Signed in'), `
       <p class="sline">Signed in as <b>${esc(W.email || '')}</b>. Your library is private: only you can see it.</p>
       <div class="ss-actions"><button class="btn" id="web-signout" type="button">Sign out</button></div>`))
   body.insertAdjacentHTML('beforeend', sec('data', glyph('note'), 'Your data', '', noun(S.refs.length, 'reference'), `
@@ -8362,6 +8379,10 @@ function webSettings(body, sec, noun) {
       <div class="ss-actions"><button class="btn danger" id="web-fresh" type="button">Start fresh</button></div>`))
   const out = $('#web-signout')
   if (out) out.onclick = () => W.signOut()
+  const inn = $('#web-signin')
+  if (inn) inn.onclick = async () => {
+    if (await askConfirm({ title: 'Sign in to an account?', body: 'This browser’s library without an account is left behind and can’t be opened again. Export it first if you want to keep it.', yes: 'Sign in' })) W.signInInstead()
+  }
   const wx = $('#web-export')
   if (wx) wx.onclick = () => exportLibrary(wx, 'Export everything', (n, f) => `Saved ${plural(n, 'reference')} and ${f.toLocaleString()} ${f === 1 ? 'picture or video' : 'pictures and videos'} in one Dailies file`)
   const fresh = $('#web-fresh')
