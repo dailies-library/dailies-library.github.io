@@ -2564,13 +2564,20 @@ a, button, label, .card, input, select, summary { touch-action: manipulation; -w
   .quick .qfoot { flex-direction: column; align-items: stretch; gap: 14px; padding: 4px 2px 0; }
   .quick .qfoot .linkbtn { font-size: 14px; text-align: left; }
   .quick .qproj { width: 100%; height: 48px; font-size: 15px; }
-  /* the filter row: tabs get the full width, Type / Sort / Help go on a line of their own under them */
-  .row2 { flex-wrap: wrap; row-gap: 8px; }
-  .row2 .tabs { flex: 1 1 100%; order: 1; }
-  .tabs .intabs { display: none; } /* Slack and Categories move down to the line below */
-  .tabtail { order: 2; display: flex; gap: 6px; margin-right: auto; }
-  .row2 .typeslot { order: 3; margin-right: 0; }
-  .row2 #kinds { order: 3; }
+  /* the filter row: ONE line that scrolls sideways: sources, then Categories / Slack / Shuffle, Type, Sort, Help, and the
+     wall's own buttons. (It used to be two lines plus a line for the wall's buttons, so the first card started a third of
+     the way down the screen. Rohit, 30 Oct) */
+  .row2 { flex-wrap: nowrap; gap: 6px; overflow-x: auto; scrollbar-width: none; margin: 0 -16px; padding: 8px 32px 10px 16px; -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); }
+  .row2::-webkit-scrollbar { display: none; }
+  .row2 .tabs { flex: none; order: 1; overflow: visible; -webkit-mask-image: none; mask-image: none; margin: 0; padding: 2px 0; }
+  .tabs .intabs { display: none; } /* Slack and Categories come right after the sources */
+  .tabtail { order: 2; display: flex; gap: 6px; flex: none; }
+  .row2 .typeslot { order: 3; margin-right: 0; flex: none; }
+  .row2 #kinds { order: 3; flex: none; }
+  .row2 .gb-tool { order: 4; flex: none; position: relative; }
+  .row2 .gb-tool[hidden] { display: none; }
+  .gridbar .gb-count { display: none; } /* the All chip already says how many */
+  .gridbar:not(:has(> :not([hidden]):not(.gb-lead):not(.gb-size))):has(.gb-lead .gb-cst[hidden]) { display: none; }
   .views { flex: 1 1 auto; } /* the Library / Projects switch fills the line, so there is no empty gap */
 }
 .quick .qhead { display: none; } /* (the small box on a computer has no title) */
@@ -7503,6 +7510,11 @@ function placeTypeSlot() {
   const sh = $('#shuffle-btn') // Shuffle sits just left of Refresh (Rohit, 28 Oct)
   if (mqPhone.matches) { if (r.parentElement !== tools) tools.prepend(r); if (sh.parentElement !== tools) tools.append(sh) }
   else { if (r.nextElementSibling !== t) $('.row2').insertBefore(r, t); if (sh.nextElementSibling !== r) $('.row2').insertBefore(sh, r) }
+  // phones: the wall's own buttons (duplicates, labels, background) join the end of the one filter row, so the wall starts
+  // right under it instead of a line further down (Rohit, 30 Oct: the header took a third of the screen)
+  const gb = ['#gb-dups', '#gb-labels', '#gb-bg'].map(s => $(s))
+  if (mqPhone.matches) { for (const b of gb) if (b.parentElement !== $('.row2')) $('.row2').append(b) }
+  else { const at = $('#gridbar .gb-size'); for (const b of gb) if (b.parentElement !== $('#gridbar')) $('#gridbar').insertBefore(b, at) }
 }
 const setSearchHint = () => { $('#q').placeholder = mqPhone.matches ? 'Search…' : 'Search anything: “orange glow”, “kinetic type”, a creator…' }
 mqPhone.addEventListener('change', () => { placeTypeSlot(); setSearchHint() }); placeTypeSlot(); setSearchHint()
