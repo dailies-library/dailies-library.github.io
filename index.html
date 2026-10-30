@@ -8,8 +8,9 @@
   // their email"). It switches itself on: the screen asks Supabase whether Google is turned on there (PUBLISHING-HANDOFF.md) and
   // until it is, shows the email and password form, so nobody lands on Supabase's "provider is not enabled" page
   // Whether Google sign-in is switched on in Supabase. The email + password form always shows too. No Slack button
-  // (Rohit, 30 Oct: "remove slack option" and bring back creating an account)
-  // (Rohit, 25 Oct: "email and password now are fine"; "Confirm email" is off, so creating an account signs you straight in)
+  // (Rohit, 30 Oct: "remove slack option"). No "Create an account" either (Rohit, 30 Oct, after the critic's review):
+  // with "Confirm email" off, anyone could take a colleague's @invideo.io address. New people use Dailies without an
+  // account, or Google, which proves the address; existing password accounts still sign in here.
   let PROV = { google: false }
   const provOn = fetch(SUPA_URL + '/auth/v1/settings', { headers: { apikey: SUPA_KEY } }).then(r => r.json())
     .then(s => ({ google: !!(s.external && s.external.google) })).catch(() => PROV)
@@ -41,10 +42,10 @@
   let uid = null
   const signedIn = new Promise(resolve => {
     const done = session => { uid = session.user.id; W.email = session.user.email || ''; W.guest = !!session.user.is_anonymous; try { localStorage.removeItem(WANT_SIGNIN) } catch {} hideGate(); setTimeout(resolve, 0) } // the library loads outside the auth callback
-    sb.auth.getSession().then(({ data }) => { tellWorker(data.session); if (data.session) done(data.session); else if (wantsSignIn()) showGate(); else guest().catch(() => showGate()) })
-    sb.auth.onAuthStateChange((event, session) => { tellWorker(session, event === 'SIGNED_OUT'); if (session && !uid) done(session); if (event === 'SIGNED_OUT') W.forgetCopy().then(() => location.reload()) })
+    sb.auth.getSession().then(({ data }) => { tellWorker(data.session); if (data.session) done(data.session); else if (wantsSignIn() || !canStore()) showGate(); else guest().catch(() => showGate()) })
+    sb.auth.onAuthStateChange((event, session) => { tellWorker(session, event === 'SIGNED_OUT'); if (session && !uid) done(session); if (session && uid && session.user.id !== uid) location.reload(); if (event === 'SIGNED_OUT') W.forgetCopy().then(() => location.reload()) })
   })
-  W.signOut = () => sb.auth.signOut()
+  W.signOut = () => W.signInInstead() // signing out leads to the sign-in form, not a fresh guest library
   // No login (Rohit, 30 Oct: "no login at all"): someone with no session gets a guest library straight away (a Supabase
   // anonymous user: same private rows and files as an account, but it lives in this browser only). The sign-in form is
   // only for people who ask for it: "Sign in to an account" in Settings, or #signin in the address. If guests aren't
@@ -54,8 +55,11 @@
     if (/^#signin$/.test(location.hash)) { history.replaceState(null, '', location.pathname + location.search); return true }
     try { return localStorage.getItem(WANT_SIGNIN) === '1' } catch { return false }
   }
+  // with site storage blocked the session can't outlive the tab, so each visit would start a new, empty guest
+  function canStore() { try { localStorage.setItem('dailies-probe', '1'); localStorage.removeItem('dailies-probe'); return true } catch { return false } }
   async function guest() { const { error } = await sb.auth.signInAnonymously(); if (error) throw error }
-  W.signInInstead = () => { try { localStorage.setItem(WANT_SIGNIN, '1') } catch {} return sb.auth.signOut() }
+  // #signin rides through the reload after sign-out, so the form shows even where storage is blocked
+  W.signInInstead = () => { try { localStorage.setItem(WANT_SIGNIN, '1') } catch {} history.replaceState(null, '', location.pathname + location.search + '#signin'); return sb.auth.signOut() }
   W.useAsGuest = () => { try { localStorage.removeItem(WANT_SIGNIN) } catch {} return guest() }
   // the link-preview server function (supabase/functions/preview): the page sends the signed-in user's token with it
   W.token = async () => { const { data } = await sb.auth.getSession(); return data.session ? data.session.access_token : null }
@@ -94,13 +98,11 @@
         <input type="email" id="g-email" placeholder="you@invideo.io" autocomplete="username" required>
         <input type="password" id="g-pass" placeholder="Password" autocomplete="current-password" minlength="8" required>
         <button type="submit" class="primary" id="g-go">Sign in</button>
-        ${PROV.google ? '' : `<button type="button" class="ghost" id="g-mode">New here? Create an account</button>`}
         <button type="button" class="ghost" id="g-guest">Use Dailies without an account</button>
         <div class="msg" id="g-msg"></div>
       </form>`
       document.body.appendChild(g)
       const mark = document.querySelector('img.mark'); if (mark) g.querySelector('#g-mark').src = mark.src
-      let creating = false
       const $ = s => g.querySelector(s)
       const say = (m, bad) => { $('#g-msg').textContent = m; $('#g-msg').className = 'msg' + (bad ? ' bad' : '') }
       // back from Slack or Google with a refusal (a non-invideo account, or Cancel): say so in plain words
@@ -116,27 +118,22 @@
         if (error) { say(error.message, true); btn.disabled = false }
       }
       if (PROV.google) $('#g-google').onclick = () => social($('#g-google'), 'google', { hd: 'invideo.io', prompt: 'select_account' })
-      // the "Create an account" switch shows while Google sign-in is off (email + password accounts, @invideo.io only)
-      $('#g-guest').onclick = () => { say('Opening Dailies…'); W.useAsGuest().catch(() => say('Using Dailies without an account isn’t switched on yet. Sign in instead.', true)) }
-      if ($('#g-mode')) $('#g-mode').onclick = () => {
-        creating = !creating
-        $('#g-go').textContent = creating ? 'Create account' : 'Sign in'
-        $('#g-mode').textContent = creating ? 'Already have an account? Sign in' : 'New here? Create an account'
-        $('#g-pass').autocomplete = creating ? 'new-password' : 'current-password'
-        say(creating ? 'Use your invideo email and pick a password (8+ characters).' : '')
+      $('#g-guest').onclick = () => {
+        if (!canStore()) return say('This browser blocks site storage, so a library without an account can’t be kept here. Sign in instead.', true)
+        say('Opening Dailies…')
+        W.useAsGuest().catch(e => say(/rate limit/i.test(e && e.message) ? 'Too many tries just now. Wait a few minutes and try again.' : 'Using Dailies without an account isn’t switched on yet. Sign in instead.', true))
       }
       g.querySelector('form').onsubmit = async e => {
         e.preventDefault()
         const email = $('#g-email').value.trim().toLowerCase(), password = $('#g-pass').value
         if (!/@invideo\.io$/.test(email)) return say('Dailies is for invideo accounts. Use your @invideo.io email.', true)
-        $('#g-go').disabled = true; say(creating ? 'Creating your account…' : 'Signing in…')
+        $('#g-go').disabled = true; say('Signing in…')
         try {
-          const { data, error } = creating ? await sb.auth.signUp({ email, password }) : await sb.auth.signInWithPassword({ email, password })
+          const { error } = await sb.auth.signInWithPassword({ email, password })
           if (error) throw error
-          if (creating && !data.session) say('Almost there: open the confirmation email we just sent, then sign in here.') // only if "Confirm email" is switched back on in Supabase
         } catch (e) {
           const m = String(e.message || e)
-          say(/invalid login/i.test(m) ? (PROV.google ? 'That email and password don’t match. New here? Continue with Google above.' : 'That email and password don’t match. New here? Create an account.')
+          say(/invalid login/i.test(m) ? (PROV.google ? 'That email and password don’t match. New here? Continue with Google above.' : 'That email and password don’t match. New here? Use Dailies without an account below.')
             : /already registered/i.test(m) ? 'There’s already an account for that email. Sign in instead.'
             : /database error|invideo accounts only/i.test(m) ? 'Dailies is for invideo accounts only.'
             : /rate limit/i.test(m) ? 'Too many tries just now. Wait a few minutes and try again.' : m, true)
@@ -1352,7 +1349,7 @@ canvas.scrub.on { opacity: 1; }
 }
 .badge svg { width: 18px; height: 18px; flex: none; }
 .card:hover .badge, .card:focus-visible .badge { background: var(--brand, rgba(10, 10, 9, .75)); }
-.frame { container-type: inline-size; }
+.frame { container-type: inline-size; content-visibility: auto; } /* off-screen pictures aren't laid out or painted (a 2000-card wall); the height still comes from the card's aspect-ratio */
 @container (max-width: 190px) { .badge { height: 28px; min-width: 28px; padding: 0 6px; left: 8px; bottom: 8px; } .badge svg { width: 15px; height: 15px; } }
 .badge .lbl { max-width: 0; overflow: hidden; opacity: 0; transition: max-width .25s ease, opacity .2s ease, margin .25s ease; }
 .card:hover .badge .lbl, .card:focus-visible .badge .lbl { max-width: 200px; opacity: 1; margin: 0 3px 0 6px; }
@@ -2577,7 +2574,8 @@ a, button, label, .card, input, select, summary { touch-action: manipulation; -w
   .row2 .gb-tool { order: 4; flex: none; position: relative; }
   .row2 .gb-tool[hidden] { display: none; }
   .gridbar .gb-count { display: none; } /* the All chip already says how many */
-  .gridbar:not(:has(> :not([hidden]):not(.gb-lead):not(.gb-size))):has(.gb-lead .gb-cst[hidden]) { display: none; }
+  @media (max-width: 520px) { .gridbar:not(:has(> :not([hidden]):not(.gb-lead):not(.gb-size))):has(.gb-lead .gb-cst[hidden]) { display: none; } } /* (the size slider only hides at this width) */
+  body.wall-empty .row2 .gb-tool { display: none; } /* moved out of the grid bar, so they don't hide with it */
   .views { flex: 1 1 auto; } /* the Library / Projects switch fills the line, so there is no empty gap */
 }
 .quick .qhead { display: none; } /* (the small box on a computer has no title) */
@@ -4525,13 +4523,16 @@ const shortCode = url => {
 }
 const imgSrc = id => '/_blob/' + id
 const b64bytes = s => Uint8Array.from(atob(String(s).replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0))
+// (built once: a new Intl formatter per call made a wall of 2000 cards spend a quarter of a second on dates alone)
+const AGO_THIS_YEAR = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short' }), AGO_OTHER = new Intl.DateTimeFormat(undefined, { month: 'short', year: 'numeric' })
 function ago(iso) {
   const d = new Date(iso), s = (Date.now() - d) / 1000
   if (s < 60) return 'just now'
   if (s < 3600) return `${Math.floor(s / 60)}m ago`
   if (s < 86400) return `${Math.floor(s / 3600)}h ago`
   if (s < 172800) return 'yesterday'
-  return d.toLocaleDateString(undefined, d.getFullYear() === new Date().getFullYear() ? { day: 'numeric', month: 'short' } : { month: 'short', year: 'numeric' })
+  if (isNaN(d)) return 'Invalid Date' // (Intl's format() throws on one; toLocaleDateString never did)
+  return (d.getFullYear() === new Date().getFullYear() ? AGO_THIS_YEAR : AGO_OTHER).format(d)
 }
 const fullDate = iso => new Date(iso).toLocaleString(undefined, { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' })
 const tsToIso = ts => new Date(parseFloat(ts) * 1000).toISOString()
@@ -5356,7 +5357,8 @@ function inOrder(db) {
   S.canWrite = can === null ? S.owner : can
   if (!S.canWrite) { $('#add-btn').hidden = true }
 
-  db.collection('refs').orderBy('savedAt', 'desc').limit(1000).onSnapshot(snap => {
+  // no real cap: at 1000 a big library silently lost its oldest references (wall builder, 30 Oct)
+  db.collection('refs').orderBy('savedAt', 'desc').limit(100000).onSnapshot(snap => {
     const catchingUp = !!(window.DAILIES_WEB_API && window.DAILIES_WEB_API.catchingUp) // opened from this device's copy, now reading the real library
     const known = S.loaded && !catchingUp ? new Set(S.refs.map(r => r.id)) : null
     S.refs = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(r => !(S.gone && S.gone.has(r.id))) // still being deleted: never flickers back
@@ -5843,6 +5845,7 @@ function render() {
     }
   }
   $('#gridbar').hidden = !S.filtered.length
+  document.body.classList.toggle('wall-empty', !S.filtered.length)
   const when = terms.find(t => t.from), fixes = terms.filter(t => t.any).map(t => `“${t.typed}” as “${t.any[0]}”`)
   $('#gb-count').textContent = S.unsorted ? `${S.filtered.length} to sort · open one and press 1–9 to tag it` : `${S.filtered.length} reference${S.filtered.length === 1 ? '' : 's'}${when ? ` · saved ${when.label}` : ''}${S.meanExtra ? ` · ${S.meanExtra} by meaning` : ''}${fixes.length ? ` · ${fixes.join(', ')}` : ''}`
   $('#gb-sort').hidden = !S.unsorted || !S.filtered.length || !S.canWrite
@@ -6123,15 +6126,16 @@ const LOADED = new Set() // picture addresses that have already been shown, so a
 let colW = 240
 function layout() {
   const grid = $('#grid')
-  // where each card is now, so it can glide to its new place (positions relative to the wall; only what's near the screen)
-  const gr0 = grid.getBoundingClientRect(), before = new Map()
-  for (const el of grid.querySelectorAll('.card')) {
-    const b = el.getBoundingClientRect()
-    if (b.bottom > -300 && b.top < innerHeight + 300) before.set(el.dataset.id, { x: b.left - gr0.left, y: b.top - gr0.top, w: b.width })
-  }
   const fsig = [S.source, S.board, S.via, S.tag, S.type, S.kind, S.fmt, S.motion, S.creator, S.color, S.q, S.smart && S.smart.q, S.similar, S.newOnly, S.unsorted, S.sort, S.seed].join('|')
   const changed = S.lastFsig != null && fsig !== S.lastFsig // a different set of cards (not a new save arriving or a resize)
   S.lastFsig = fsig
+  // where each card is now, so it can glide to its new place (positions relative to the wall; only what's near the screen).
+  // Not needed when the set of cards changed: those just fade up, and reading every card's place forces a full layout of the wall
+  const gr0 = grid.getBoundingClientRect(), before = new Map()
+  if (!changed) for (const el of grid.querySelectorAll('.card')) {
+    const b = el.getBoundingClientRect()
+    if (b.bottom > -300 && b.top < innerHeight + 300) before.set(el.dataset.id, { x: b.left - gr0.left, y: b.top - gr0.top, w: b.width })
+  }
   const w = grid.clientWidth || innerWidth
   const gap = w < 520 ? 6 : w < 760 ? 10 : S.size < 210 ? 14 : 24 // tight on phones, like a contact sheet
   const n = w < 520 ? (S.size < 200 ? 3 : S.size < 340 ? 2 : 1) : Math.max(1, Math.min(16, Math.floor((w + gap) / (S.size + gap))))
@@ -7462,13 +7466,15 @@ $('#add-form').addEventListener('submit', async e => {
     if (into && done.id) { addToProject(into, [done.id]); if (projectsOn()) renderProjects() }
     closeTop()
     if (!done.dup && url && !pending && !(prev && prev.blob) && isTouch() && S.assets && !webPrev()) toast('Saved. Its picture arrives when Dailies is open on your computer.', { label: 'Add picture', run: () => pickPictureFor(done.id) })
-    else toast(done.dup ? 'Already in your library. Note added.' : 'Saved', { label: 'View', run: () => openDetail(done.id) })
+    else toast(done.dup ? 'Already in your library. Note added.' : savedWhere(done), { label: 'View', run: () => openDetail(done.id) })
   } catch (err) {
     toast(err && err.code && /upload|unsupported|too_large|quota/.test(err.code) ? uploadError(err) : 'Couldn’t save: ' + (err.message || err.code))
   } finally {
     btn.disabled = false; btn.textContent = 'Save'
   }
 })
+// a website stays off the All wall, so say where it went (30 Oct: the tester saved one and couldn't find it)
+const savedWhere = done => done.ref && isSite(done.ref) ? 'Saved to Websites' : 'Saved' // (the wall hears of the new ref a moment later)
 // shared by the Save dialog and the quick link box; returns { id, dup }
 async function saveRef({ url, note = '', tags = [], image = null, extra = null, auto = false }) {
   if (url && /^\s*(javascript|data|vbscript|file|blob):/i.test(url)) throw new Error('That isn’t a web link') // only web links are saved
@@ -7496,7 +7502,7 @@ async function saveRef({ url, note = '', tags = [], image = null, extra = null, 
   const id = newId('w')
   if (S.gone) S.gone.delete(id) // deleted earlier in this visit, saved again on purpose
   await S.db.collection('refs').doc(id).set(ref)
-  return { id, dup: false }
+  return { id, dup: false, ref }
 }
 
 const mqPhone = matchMedia('(max-width: 760px)')
@@ -7590,7 +7596,7 @@ $('#quick').addEventListener('submit', async e => {
     toggleQuick(null, false)
     // a phone has no extension to fetch the picture: say so, and let the picture come from Photos right now
     if (!done.dup && isTouch() && S.assets && !webPrev()) toast('Saved. Its picture arrives when Dailies is open on your computer.', { label: 'Add picture', run: () => pickPictureFor(done.id) })
-    else toast(done.dup ? 'Already in your library. Note added.' : 'Saved', { label: 'View', run: () => openDetail(done.id) })
+    else toast(done.dup ? 'Already in your library. Note added.' : savedWhere(done), { label: 'View', run: () => openDetail(done.id) })
   } catch (err) {
     toast('Couldn’t save: ' + (err.message || err.code))
   } finally {
@@ -7787,9 +7793,12 @@ addEventListener('scroll', () => { // scrolling asks for the previews of the car
 }, { passive: true })
 function requestPreviews() {
   if (!S.inboxOpen || !S.canWrite) return
-  measureScreen()
   S.asked = S.asked || new Set()
-  const items = S.refs.filter(r => r.url && !S.asked.has(r.id) && ((r.preview === 'pending' && !r.image && (window.DAILIES_DESKTOP || PREVIEWABLE.includes(r.source) || (siteReady() && !window.DAILIES_WEB && !['note', 'upload'].includes(r.source)))) || ((r.source === 'pinterest' || r.source === 'twitter') && (!r.media || (VIDEO_PREVIEWS && r.media !== 'image' && !r.video && !r.gif && needFrames(r)))) || (slidesReady() && (r.source === 'pinterest' || r.source === 'twitter') && !r.sl && r.kind !== 'note') || (pkReady() && r.source === 'pinterest' && !r.pk && /\/pin\/\d+/.test(r.url || '')) || (r.source === 'youtube' && (needFrames(r) || wideShort(r))) || (r.source === 'instagram' && needFrames(r) && !!r.image && igWanted(r)) || (r.via === 'instagram' && r.image && !r.caption && !r.title && igWanted(r)) || (VIDEO_PREVIEWS && window.DAILIES_DESKTOP && r.vidWant && !r.video)))
+  const want = S.refs.filter(r => r.url && !S.asked.has(r.id) && ((r.preview === 'pending' && !r.image && (window.DAILIES_DESKTOP || PREVIEWABLE.includes(r.source) || (siteReady() && !window.DAILIES_WEB && !['note', 'upload'].includes(r.source)))) || ((r.source === 'pinterest' || r.source === 'twitter') && (!r.media || (VIDEO_PREVIEWS && r.media !== 'image' && !r.video && !r.gif && needFrames(r)))) || (slidesReady() && (r.source === 'pinterest' || r.source === 'twitter') && !r.sl && r.kind !== 'note') || (pkReady() && r.source === 'pinterest' && !r.pk && /\/pin\/\d+/.test(r.url || '')) || (r.source === 'youtube' && (needFrames(r) || wideShort(r))) || (r.source === 'instagram' && needFrames(r) && !!r.image && igWanted(r)) || (r.via === 'instagram' && r.image && !r.caption && !r.title && igWanted(r)) || (VIDEO_PREVIEWS && window.DAILIES_DESKTOP && r.vidWant && !r.video)))
+  if (!want.length) return
+  // only more than 25 waiting needs the on-screen order (it reads every card's place, which costs a full layout on a big wall)
+  if (want.length > 25) measureScreen(); else SCREEN.pos = new Map()
+  const items = want
     // what you can see first, then the cards just below, then the rest: previews seem to be there already as you scroll
     .map((r, i) => [r, onScreenRank(r.id, i)]).sort((a, b) => a[1] - b[1]).map(x => x[0])
     .filter(r => r.source !== 'instagram' || document.visibilityState === 'visible') // Instagram only while you're looking (fewer automatic requests on your account)
