@@ -4558,8 +4558,7 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden && $(
 document.addEventListener('pointerdown', e => { if ($('#toast').classList.contains('show') && !e.target.closest('#toast') && Date.now() - toastShownAt > 1500) $('#toast').classList.remove('show') }, { capture: true, passive: true })
 
 // ------------------------------------------------------------------ milestone confetti (the one celebration Rohit kept)
-const FUN = (() => { try { return { party: true, ...(JSON.parse(localStorage.getItem('dailies:fun')) || {}) } } catch { return { party: true } } })()
-const saveFun = () => { try { localStorage.setItem('dailies:fun', JSON.stringify(FUN)) } catch { /* no storage */ } }
+// always on, with no switch (Rohit, 31 Oct: "user can't turn this off"); only reduced motion skips it
 const calm = () => matchMedia('(prefers-reduced-motion: reduce)').matches
 const MILESTONES = [1, 10, 25, 50, 100, 250, 500, 1000, 2500]
 function newSaves(added, before) {
@@ -4568,7 +4567,7 @@ function newSaves(added, before) {
   if (m) { setTimeout(() => party(), 250); setTimeout(() => toast(m === 1 ? 'Your first reference! The library starts here ✨' : `${m} references saved 🎉`), 300) }
 }
 function party() {
-  if (!FUN.party || calm()) return
+  if (calm()) return
   const c = Object.assign(document.createElement('canvas'), { className: 'confetti' }), dpr = Math.min(2, devicePixelRatio || 1)
   c.width = innerWidth * dpr; c.height = innerHeight * dpr; c.style.width = innerWidth + 'px'; c.style.height = innerHeight + 'px'; document.body.appendChild(c)
   const g = c.getContext('2d'); g.scale(dpr, dpr)
@@ -8361,14 +8360,13 @@ function renderSettings() {
   if (window.DAILIES_DESKTOP) wireMacSettings()
   if (window.DAILIES_WEB) webSettings(body, sec, noun)
   const qmark = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.2 9.2a3 3 0 1 1 4.6 2.5c-1 .6-1.8 1.2-1.8 2.3M12 17.6h.01" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/></svg>'
-  { // quick buttons at the top: an icon and one word, the rest on hover (what the ⋯ menu used to hold, plus confetti)
+  { // quick buttons at the top: an icon and one word, the rest on hover (what the ⋯ menu used to hold)
     const canExport = !!S.downloads && S.filtered.some(r => r.image)
     const ic = d => `<svg viewBox="0 0 24 24" aria-hidden="true" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="${d}" fill="none"/></svg>`
     const qb = (attrs, icon, word, tip) => `<button type="button" class="btn" ${attrs} data-tip="${tip}" aria-label="${tip}">${icon}${word}</button>`
-    body.insertAdjacentHTML('afterbegin', `<div class="ss-quick">${S.canWrite && mqPhone.matches ? qb('data-slib="import"', ic('M4 13v4a3 3 0 0 0 3 3h10a3 3 0 0 0 3-3v-4M4 13l2.5-8h11l2.5 8M4 13h4.5l1.5 2.5h4l1.5-2.5H20M12 6.5v5M9.8 9.3 12 11.5l2.2-2.2'), 'Import', 'Bring in your Pinterest, Instagram and YouTube saves') : ''}${S.canWrite && canExport ? qb('data-slib="export"', ic('M4 5h16v14H4zM8 15l3-4 3 3 2-2 3 3'), 'Download', 'Download what is on screen as a moodboard. Formats: PNG image, PDF, or a text brief') : ''}${S.canWrite && mqPhone.matches ? qb('data-slib="bg"', '<i class="bgdot"></i>', 'Background', 'Change the page colour') : ''}${qb(`id="fun-party" aria-pressed="${!!FUN.party}"`, ic('M12 3l2 6 6 2-6 2-2 6-2-6-6-2 6-2z'), 'Confetti', FUN.party ? 'Confetti on. Click to turn it off' : 'Confetti off. Click to turn it on')}</div>`)
+    body.insertAdjacentHTML('afterbegin', `<div class="ss-quick">${S.canWrite && mqPhone.matches ? qb('data-slib="import"', ic('M4 13v4a3 3 0 0 0 3 3h10a3 3 0 0 0 3-3v-4M4 13l2.5-8h11l2.5 8M4 13h4.5l1.5 2.5h4l1.5-2.5H20M12 6.5v5M9.8 9.3 12 11.5l2.2-2.2'), 'Import', 'Bring in your Pinterest, Instagram and YouTube saves') : ''}${S.canWrite && canExport ? qb('data-slib="export"', ic('M4 5h16v14H4zM8 15l3-4 3 3 2-2 3 3'), 'Download', 'Download what is on screen as a moodboard. Formats: PNG image, PDF, or a text brief') : ''}${S.canWrite && mqPhone.matches ? qb('data-slib="bg"', '<i class="bgdot"></i>', 'Background', 'Change the page colour') : ''}</div>`)
   }
   body.insertAdjacentHTML('beforeend', sec('help', qmark, 'Help', '', 'How Dailies works', helpHtml(set)))
-  { const c = $('#fun-party'); if (c) c.onclick = () => { FUN.party = !FUN.party; saveFun(); c.setAttribute('aria-pressed', String(FUN.party)); const t = FUN.party ? 'Confetti on. Click to turn it off' : 'Confetti off. Click to turn it on'; c.dataset.tip = t; c.setAttribute('aria-label', t) } }
   const syncBtn = $('#set-sync')
   if (syncBtn) syncBtn.onclick = () => syncSlack(true)
   const ch = $('#set-channels')
