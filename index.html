@@ -6217,13 +6217,25 @@ function ratio(r) {
   if (r.kind === 'video') return 0.5625
   return 1
 }
+// is a picture still on its way for this link? On the website it isn't when nothing can bring one: the server already
+// answered without a picture (Behance, Dribbble and others block it) or couldn't be reached, and the extension doesn't
+// fetch this kind of link. Those show as a clean card (site and link) instead of "Preview on its way" for ever (Rohit, 2 Nov).
+// The reference stays 'pending', so a picture can still arrive later.
+function stillComing(r) {
+  if (r.preview !== 'pending' || r.image || !r.url) return false
+  if (!window.DAILIES_WEB || window.DAILIES_DESKTOP) return true
+  if (S.ext && PREVIEWABLE.includes(r.source)) return true // on the website the extension previews only these
+  if (r.noPic || WEBPREV.failed.has(r.id)) return false
+  return webPrev() && r.source !== 'instagram' && /^https:\/\//i.test(r.url) && !['note', 'upload'].includes(r.source)
+}
+const textOnly = r => r.kind === 'note' || (!r.image && r.kind === 'link' && !stillComing(r))
 function estimate(r) {
-  if (r.kind === 'note' || (!r.image && r.kind === 'link' && r.preview !== 'pending')) return 140 + Math.min(titleOf(r).length, 300) * 0.5
+  if (textOnly(r)) return 140 + Math.min(titleOf(r).length, 300) * 0.5
   return colW * ratio(r)
 }
 
 function cardFor(r) {
-  const sig = [r.updatedAt, r.image, r.note, r.title, (r.tags || []).join(), r.ai && r.ai.t, r.media, r.scrub && r.scrub.id, isNew(r), r.video, videoComing(r), r.focus].join('|')
+  const sig = [r.updatedAt, r.image, r.note, r.title, (r.tags || []).join(), r.ai && r.ai.t, r.media, r.scrub && r.scrub.id, isNew(r), r.video, videoComing(r), r.focus, stillComing(r)].join('|')
   const hit = cache.get(r.id)
   if (hit && hit.sig === sig) return hit.el
   const el = buildCard(r)
@@ -6256,7 +6268,7 @@ function buildCard(r) {
   el.draggable = !!S.canWrite
   const tags = (r.tags || []).length ? `<div class="tags">${r.tags.slice(0, 6).map(t => `<span>#${esc(t)}</span>`).join('')}</div>` : ''
   const note = r.note && r.kind !== 'note' ? `<p class="note">${esc(r.note)}</p>` : ''
-  const textual = r.kind === 'note' || (!r.image && r.kind === 'link' && r.preview !== 'pending')
+  const textual = textOnly(r)
   if (textual) {
     el.className = 'card textcard'
     el.innerHTML = `${more}<div class="body"><div class="head">${glyph(r.source, true)}<span>${esc(whoOf(r))}</span></div><p class="big">${esc(titleOf(r))}</p>${note}${tags}<div class="meta"><span class="when">${ago(r.savedAt)}</span></div></div>`
@@ -6268,7 +6280,7 @@ function buildCard(r) {
     : r.image
     ? `<img alt="" loading="lazy" decoding="async" draggable="false" src="${esc(wallSrc(r))}"${focusAttr(r)}>`
     : yp ? ytImg(yp, 'loading="lazy" decoding="async" draggable="false"')
-    : `<div class="poster${r.preview === 'pending' && r.url ? ' coming' : ''}">${glyph(r.source)}<span class="code mono">${esc(r.url ? shortCode(r.url) : '')}</span></div>`
+    : `<div class="poster${stillComing(r) ? ' coming' : ''}">${glyph(r.source)}<span class="code mono">${esc(r.url ? shortCode(r.url) : '')}</span></div>`
   const kind = r.kind && r.kind !== 'link' && r.kind !== 'pin' ? ` · ${KIND[r.kind]}` : ''
   const label = info(r.source).label + kind
   el.setAttribute('aria-label', `${label}: ${headOf(r)}`)
@@ -6277,7 +6289,7 @@ function buildCard(r) {
     ${more}<div class="frame" style="aspect-ratio:${(1 / ratio(r)).toFixed(4)}${phOf(r)}">${pic}
       ${typePill(r)}
       <div class="info">
-        ${r.ai && r.ai.t ? `<p class="title">${esc(r.ai.t)}</p>` : silent(r) ? '' : `<p class="title">${esc(r.title || r.caption ? titleOf(r) : (r.preview === 'pending' ? 'Preview on its way' : titleOf(r)))}</p>`}
+        ${r.ai && r.ai.t ? `<p class="title">${esc(r.ai.t)}</p>` : silent(r) ? '' : `<p class="title">${esc(r.title || r.caption ? titleOf(r) : (stillComing(r) ? 'Preview on its way' : titleOf(r)))}</p>`}
         <div class="meta"><span class="who">${esc(whoOf(r))}</span><span class="when">· ${ago(r.savedAt)}</span></div>
         ${note}
       </div>
@@ -6983,7 +6995,12 @@ function fillDetail(r) {
   $('#d-cap-wrap').hidden = !cap
   $('#d-cap').textContent = cap
   $('#d-pending').hidden = !(r.preview === 'pending' && !r.image)
-  $('#d-pending').textContent = isTouch() ? 'No picture yet. It arrives when Dailies is open on your computer with the extension, or add one now with Set thumbnail (a screenshot from Photos works).' : 'The thumbnail and caption appear after Claude fetches previews. Ask Claude to “refresh Dailies previews”, or set a thumbnail yourself.'
+  $('#d-pending').textContent = !window.DAILIES_WEB ? '' : stillComing(r) ? 'Its picture is on its way.'
+    : r.noPic ? 'This site doesn\u2019t share a picture with Dailies. Add one with Set thumbnail.'
+    : PREVIEWABLE.includes(r.source) ? 'Its picture arrives when Dailies is open in Chrome on a computer with the extension. Or add one with Set thumbnail.'
+    : WEBPREV.failed.has(r.id) ? 'Couldn\u2019t fetch its picture just now. Dailies tries again next time you open it, or add one with Set thumbnail.'
+    : 'No picture yet. Add one with Set thumbnail.'
+  if (!window.DAILIES_WEB) $('#d-pending').textContent = isTouch() ? 'No picture yet. It arrives when Dailies is open on your computer with the extension, or add one now with Set thumbnail (a screenshot from Photos works).' : 'The thumbnail and caption appear after Claude fetches previews. Ask Claude to “refresh Dailies previews”, or set a thumbnail yourself.'
   const open = $('#d-open')
   open.hidden = !r.url
   if (r.url && /^https?:\/\//i.test(r.url)) { open.href = r.url; open.textContent = r.via === 'slack' && r.source === 'upload' ? 'Open in Slack ↗' : `Open on ${info(r.source).label === 'Web' ? r.domain || 'the web' : info(r.source).label} ↗` }
@@ -7181,13 +7198,13 @@ $('#d-delete').onclick = async () => {
 // On the website, references that are still waiting for a picture get their title and picture from the server function, a
 // few at a time, in the background: every link without the extension (saved from a phone, say), and plain websites with it
 // (the server reads them without anyone's logins; the extension keeps Instagram, Pinterest, X and YouTube)
-const WEBPREV = { asked: new Set(), busy: false, timer: 0 }
+const WEBPREV = { asked: new Set(), failed: new Set(), busy: false, timer: 0 } // failed: asked this visit, no picture came
 const webPrev = () => !!(window.DAILIES_WEB && window.DAILIES_WEB_API && window.DAILIES_WEB_API.previewUrl) // the website fetches pictures itself
 function webPreviewsSoon() { if (!(window.DAILIES_WEB && S.canWrite)) return; clearTimeout(WEBPREV.timer); WEBPREV.timer = setTimeout(webPreviews, 3000) }
 async function webPreviews() {
   const W = window.DAILIES_WEB_API
   if (WEBPREV.busy || !(W && W.token && W.previewUrl) || document.hidden) return
-  const todo = S.refs.filter(r => r.preview === 'pending' && !r.image && /^https:\/\//i.test(r.url || '') && r.source !== 'instagram' && !(S.ext && PREVIEWABLE.includes(r.source)) && !['note', 'upload'].includes(r.source) && !WEBPREV.asked.has(r.id)).slice(0, 6)
+  const todo = S.refs.filter(r => r.preview === 'pending' && !r.image && /^https:\/\//i.test(r.url || '') && !r.noPic && r.source !== 'instagram' && !(S.ext && PREVIEWABLE.includes(r.source)) && !['note', 'upload'].includes(r.source) && !WEBPREV.asked.has(r.id)).slice(0, 6) // noPic: the server already said it has none
   if (!todo.length) return
   WEBPREV.busy = true
   try {
@@ -7196,7 +7213,7 @@ async function webPreviews() {
       WEBPREV.asked.add(r.id)
       try {
         const res = await fetch(W.previewUrl + '?url=' + encodeURIComponent(r.url), { headers: { Authorization: 'Bearer ' + token, apikey: W.apikey || '' }, signal: AbortSignal.timeout(12000) })
-        if (!res.ok) continue
+        if (!res.ok) { WEBPREV.failed.add(r.id); continue }
         const d = await res.json()
         if (!byId(r.id)) continue
         const fields = {}
@@ -7206,11 +7223,15 @@ async function webPreviews() {
           const blob = await (await fetch(d.image)).blob()
           const img = await uploadImage(blob, { thumb: true })
           Object.assign(fields, { image: img.image, imageW: img.imageW, imageH: img.imageH, thumb: img.thumb, preview: 'done' })
-        }
-        if (Object.keys(fields).length) await patch(r.id, fields)
-      } catch { /* this one stays as it is; the extension may still fill it in */ }
+        } else { fields.noPic = true; WEBPREV.failed.add(r.id) } // the server answered without a picture: a clean card from now on
+        await patch(r.id, fields)
+      } catch { WEBPREV.failed.add(r.id) /* tried again next visit */ }
     }
-  } finally { WEBPREV.busy = false; if (S.refs.some(r => r.preview === 'pending' && !r.image && !WEBPREV.asked.has(r.id))) webPreviewsSoon() }
+  } finally {
+    WEBPREV.busy = false
+    if (S.refs.some(r => r.preview === 'pending' && !r.image && !r.noPic && !WEBPREV.asked.has(r.id))) webPreviewsSoon()
+    try { render() } catch (e) { console.warn(e) } // cards that gave up stop saying "on its way"
+  }
 }
 async function attachPicture(id, blob, done = 'Picture added') {
   const r = byId(id)
@@ -7708,8 +7729,8 @@ function openInbox() {
   window.addEventListener('message', e => {
     if (e.source !== window || !e.data) return
     if (e.data.type === 'dailies:pin-preview') addGhosts(e.data)
-    if (e.data.type === 'dailies:ext') { S.ext = String(e.data.v || '1'); S.extGone = false; if (!$('#import').hidden && (IMP.view === 'home' || IMP.view === 'extension')) renderImport() } // the extension says hello (1.19 and later)
-    if (e.data.type === 'dailies:ext-gone') { S.ext = null; S.extGone = true } // it was reloaded or updated while this page was open (1.28 and later)
+    if (e.data.type === 'dailies:ext') { if (!S.ext && S.refs) setTimeout(render); S.ext = String(e.data.v || '1'); S.extGone = false; if (!$('#import').hidden && (IMP.view === 'home' || IMP.view === 'extension')) renderImport() } // the extension says hello (1.19 and later)
+    if (e.data.type === 'dailies:ext-gone') { if (S.ext && S.refs) setTimeout(render); S.ext = null; S.extGone = true } // it was reloaded or updated while this page was open (1.28 and later)
     if (e.data.type === 'dailies:ig-pause') { S.igPause = e.data.until; if (!$('#import').hidden && IMP.view === 'instagram') renderIgRes(); if (!$('#import').hidden && IMP.view === 'igprog') impIgSoon() }
     if (e.data.type === 'dailies:ig-progress') impIgProgress(e.data)
     if (e.data.type === 'dailies:ig-import-result') impIgResult(e.data)
